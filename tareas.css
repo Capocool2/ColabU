@@ -1,0 +1,221 @@
+/* Estilos específicos para Gestión de Tareas */
+.tasks-container {
+    display: grid;
+    gap: 1.5rem;
+    max-width: 800px;
+}
+
+.task-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    border-left: 4px solid var(--secondary);
+    transition: all 0.3s ease;
+}
+
+.task-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+}
+
+.task-card.overdue {
+    border-left-color: var(--accent);
+}
+
+.task-card.completed {
+    border-left-color: var(--success);
+    opacity: 0.8;
+}
+
+.task-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.checkbox-container {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    margin-top: 0.2rem;
+}
+
+.checkbox-container input {
+    display: none;
+}
+
+.checkmark {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--gray);
+    border-radius: 4px;
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.checkbox-container input:checked + .checkmark {
+    background: var(--success);
+    border-color: var(--success);
+}
+
+.checkbox-container input:checked + .checkmark::after {
+    content: '✓';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.task-title {
+    color: var(--primary);
+    font-size: 1.2rem;
+    margin: 0;
+    flex: 1;
+}
+
+.task-description {
+    color: var(--text);
+    margin-bottom: 1.5rem;
+    line-height: 1.5;
+    padding-left: 2rem;
+}
+
+.task-details {
+    padding-left: 2rem;
+}
+
+.task-assignment {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.assigned-to {
+    font-weight: 600;
+    color: var(--dark);
+}
+
+.task-project {
+    color: var(--gray);
+    font-size: 0.9rem;
+}
+
+.task-deadline {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.deadline-date {
+    font-weight: 600;
+    color: var(--dark);
+}
+
+.task-deadline.overdue .deadline-date {
+    color: var(--accent);
+}
+
+.task-status {
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.task-status:not(.completed) {
+    background: var(--warning);
+    color: white;
+}
+
+.task-status.completed {
+    background: var(--success);
+    color: white;
+}
+
+.new-task {
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border: 2px dashed rgba(255,255,255,0.3);
+    border-left: 4px solid transparent;
+    min-height: 120px;
+}
+
+.new-task-content {
+    text-align: center;
+}
+
+.add-icon {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+    font-weight: 300;
+    line-height: 1;
+}
+
+.new-task h3 {
+    color: white;
+    margin-bottom: 0.3rem;
+    font-size: 1.1rem;
+}
+
+.new-task p {
+    opacity: 0.9;
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+/* Responsive para Tareas */
+@media (max-width: 768px) {
+    .tasks-container {
+        gap: 1rem;
+    }
+    
+    .task-card {
+        padding: 1.2rem;
+    }
+    
+    .task-deadline {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    
+    .task-description,
+    .task-details {
+        padding-left: 1.5rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .task-card {
+        padding: 1rem;
+    }
+    
+    .task-header {
+        gap: 0.8rem;
+    }
+    
+    .task-title {
+        font-size: 1.1rem;
+    }
+    
+    .task-description,
+    .task-details {
+        padding-left: 1rem;
+    }
+    
+    .task-assignment {
+        gap: 0.3rem;
+    }
+}

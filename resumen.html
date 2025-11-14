@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Resumen - ColabU</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="resumen.css" />
+  </head>
+  <body>
+    <div class="app-container">
+      <header class="app-header">
+        <div class="header-content">
+          <div class="logo">
+            <h1>ColabU</h1>
+          </div>
+          <div class="hamburger">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+
+          <nav class="main-nav">
+            <a href="resumen.html" class="nav-link active">Resumen</a>
+            <a href="grupos.html" class="nav-link">Grupos</a>
+            <a href="tareas.html" class="nav-link">Tareas</a>
+            <a href="calendario.html" class="nav-link">Calendario</a>
+            <a href="chat.html" class="nav-link">Chat</a>
+          </nav>
+
+          <!-- Usuario -->
+          <div class="user-menu">
+            <span class="user-name" id="userName">Usuario</span>
+            <div class="user-avatar" id="userAvatar">US</div>
+            <a href="index.html" class="logout-btn">Cerrar Sesión</a>
+          </div>
+        </div>
+      </header>
+
+      <main class="main-content">
+        <div class="page-header">
+          <h2>Resumen General</h2>
+          <p>Vista completa de tu progreso y actividades</p>
+        </div>
+
+        <div class="dashboard-grid">
+          <!-- 🔹 Estadísticas Rápidas (adaptadas con IDs dinámicos) -->
+          <div class="stats-container">
+            <div class="stat-card">
+              <div class="stat-icon">📊</div>
+              <div class="stat-info">
+                <h3 id="grupos-activos">0</h3>
+                <p>Grupos Activos</p>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">✅</div>
+              <div class="stat-info">
+                <h3 id="tareas-completadas">0</h3>
+                <p>Tareas Completadas</p>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">⏰</div>
+              <div class="stat-info">
+                <h3 id="progreso-general">0%</h3>
+                <p>Progreso General</p>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">👥</div>
+              <div class="stat-info">
+                <h3 id="colaboradores">0</h3>
+                <p>Colaboradores</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Progreso de Grupos -->
+          <div class="section-card">
+            <h3>Progreso de Grupos</h3>
+            <div class="progress-list" id="progreso-grupos">
+              <!-- Aquí se cargarán dinámicamente los grupos -->
+            </div>
+          </div>
+
+          <!-- Tareas Recientes -->
+          <div class="section-card">
+            <h3>Tareas Recientes</h3>
+            <div class="recent-tasks" id="tareas-recientes">
+              <!-- Aquí se cargarán dinámicamente -->
+            </div>
+          </div>
+
+          <!-- Próximos Eventos -->
+          <div class="section-card">
+            <h3>Próximos Eventos</h3>
+            <div class="upcoming-events" id="eventos-proximos">
+              <!-- Aquí se cargarán dinámicamente -->
+            </div>
+          </div>
+
+          <!-- Actividad Reciente -->
+          <div class="section-card">
+            <h3>Actividad Reciente</h3>
+            <div class="activity-feed" id="actividad-reciente">
+              <!-- Aquí se cargarán dinámicamente -->
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const hamburger = document.querySelector(".hamburger");
+        const mainNav = document.querySelector(".main-nav");
+
+        if (hamburger && mainNav) {
+          hamburger.addEventListener("click", () => {
+            hamburger.classList.toggle("active");
+            mainNav.classList.toggle("open");
+          });
+        }
+      });
+    </script>
+    <script src="resumen.js"></script>
+  </body>
+</html>

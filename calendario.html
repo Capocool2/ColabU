@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calendario - ColabU</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="calendario.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <div class="header-content">
+                <div class="logo">
+                    <h1>ColabU</h1>
+                </div>
+                <div class="hamburger">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <nav class="main-nav">
+                    <a href="resumen.html" class="nav-link">Resumen</a>
+                    <a href="grupos.html" class="nav-link">Grupos</a>
+                    <a href="tareas.html" class="nav-link">Tareas</a>
+                    <a href="calendario.html" class="nav-link active">Calendario</a>
+                    <a href="chat.html" class="nav-link">Chat</a>
+                 
+                </nav>
+                <!-- En el header, actualizar la sección del usuario -->
+<div class="user-menu">
+    <span class="user-name" id="userName">Usuario</span>
+    <div class="user-avatar" id="userAvatar">US</div>
+    <a href="index.html" class="logout-btn">Cerrar Sesión</a>
+</div>
+
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="page-header">
+                <h2>Calendario de Proyectos</h2>
+                <p>Visualiza fechas importantes y eventos del proyecto</p>
+            </div>
+
+            <div class="calendar-layout">
+                <div class="calendar-section">
+                    <h3 id="currentMonthTitle">Septiembre 2025</h3>
+                    
+                    <div class="calendar">
+                        <div class="calendar-header">
+                            <div class="calendar-nav">
+                                <button class="nav-btn prev">‹</button>
+                                <span class="current-month">Septiembre 2025</span>
+                                <button class="nav-btn next">›</button>
+                            </div>
+                            
+                            <div class="week-days">
+                                <div class="week-day">Dom</div>
+                                <div class="week-day">Lun</div>
+                                <div class="week-day">Mar</div>
+                                <div class="week-day">Mié</div>
+                                <div class="week-day">Jue</div>
+                                <div class="week-day">Vie</div>
+                                <div class="week-day">Sáb</div>
+                            </div>
+                        </div>
+                        
+                        <div class="calendar-grid">
+                            <!-- Los días se generan automáticamente -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="events-section">
+                    <h3>Eventos</h3> <!-- Cambiado de "Próximos Eventos" a "Eventos" -->
+    <p>Todos los eventos del proyecto</p>
+                    <div class="events-list">
+                        <!-- Los eventos se cargan automáticamente -->
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+document.addEventListener("DOMContentLoaded", () => {
+  const hamburger = document.querySelector(".hamburger");
+  const mainNav = document.querySelector(".main-nav");
+
+  if (hamburger && mainNav) {
+    hamburger.addEventListener("click", () => {
+      hamburger.classList.toggle("active");
+      mainNav.classList.toggle("open");
+    });
+  }
+});
+</script>
+    <script src="calendario.js"></script>
+
+    <script>
+        // Funciones básicas para la página
+        function logout() {
+            localStorage.removeItem('currentUser');
+            window.location.href = 'login.html';
+        }
+
+        // Actualizar información del usuario
+        document.addEventListener('DOMContentLoaded', function() {
+            const user = JSON.parse(localStorage.getItem('currentUser'));
+            if (user) {
+                document.getElementById('userName').textContent = user.full_name || 'Usuario';
+                document.getElementById('userAvatar').textContent = 
+                    (user.full_name || 'US').split(' ').map(n => n[0]).join('').substring(0, 2);
+            }
+        });
+    </script>
+</body>
+</html>

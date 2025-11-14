@@ -1,0 +1,193 @@
+/* Estilos específicos para Grupos de Trabajo */
+.content-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 2rem;
+}
+
+.group-card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    border: 1px solid var(--border);
+}
+
+.group-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 15px rgba(0,0,0,0.15);
+}
+
+.group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.group-header h3 {
+    color: var(--primary);
+    font-size: 1.3rem;
+    margin-right: 1rem;
+}
+
+.project-tag {
+    background: var(--light);
+    color: var(--dark);
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.group-description {
+    color: var(--text);
+    margin-bottom: 1.5rem;
+    line-height: 1.5;
+}
+
+.group-details {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.detail-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.detail-label {
+    font-size: 0.9rem;
+    color: var(--gray);
+    margin-bottom: 0.3rem;
+}
+
+.detail-value {
+    font-weight: 600;
+    color: var(--dark);
+}
+
+.members-list {
+    margin-bottom: 1.5rem;
+}
+
+.member {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.8rem 0;
+    border-bottom: 1px solid var(--light);
+}
+
+.member:last-child {
+    border-bottom: none;
+}
+
+.member-avatar {
+    width: 40px;
+    height: 40px;
+    background: var(--secondary);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+}
+
+.member-info {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+.member-name {
+    font-weight: 600;
+    color: var(--dark);
+}
+
+.member-role {
+    font-size: 0.9rem;
+    color: var(--gray);
+}
+
+.create-group {
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border: 2px dashed rgba(255,255,255,0.3);
+    min-height: 200px;
+}
+
+.create-group-content {
+    text-align: center;
+}
+
+.create-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    font-weight: 300;
+    line-height: 1;
+}
+
+.create-group h3 {
+    color: white;
+    margin-bottom: 0.5rem;
+}
+
+.create-group p {
+    opacity: 0.9;
+    margin: 0;
+}
+
+/* Responsive para Grupos */
+@media (max-width: 768px) {
+    .content-grid {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+    
+    .group-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .group-details {
+        gap: 1rem;
+    }
+    
+    .member {
+        padding: 0.6rem 0;
+    }
+}
+
+@media (max-width: 480px) {
+    .group-card {
+        padding: 1rem;
+    }
+    
+    .group-header h3 {
+        font-size: 1.1rem;
+    }
+    
+    .member {
+        gap: 0.8rem;
+    }
+    
+    .member-avatar {
+        width: 35px;
+        height: 35px;
+        font-size: 0.8rem;
+    }
+}

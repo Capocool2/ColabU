@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administración - ColabU</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <div class="header-content">
+                <div class="logo">
+                    <h1>ColabU</h1>
+                </div>
+                <nav class="main-nav">
+                    <a href="admin.html" class="nav-link active">Administración</a>
+                </nav>
+                <div class="user-menu">
+                    <span class="user-name" id="userName">Administrador</span>
+                    <div class="user-avatar" id="userAvatar">AD</div>
+                    <a href="index.html" class="logout-btn">Cerrar Sesión</a>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="page-header">
+                <h2>Panel de Administración</h2>
+                <p>Gestión completa de la plataforma ColabU</p>
+            </div>
+
+            <div class="admin-dashboard">
+                <!-- Estadísticas Generales -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">👥</div>
+                        <div class="stat-info">
+                            <h3 id="totalUsers">0</h3>
+                            <p>Usuarios Totales</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🎓</div>
+                        <div class="stat-info">
+                            <h3 id="totalTeachers">0</h3>
+                            <p>Docentes</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📚</div>
+                        <div class="stat-info">
+                            <h3 id="totalStudents">0</h3>
+                            <p>Estudiantes</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🔧</div>
+                        <div class="stat-info">
+                            <h3 id="totalGroups">0</h3>
+                            <p>Grupos Activos</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Gestión de Usuarios -->
+                <div class="section-card">
+                    <div class="section-header">
+                        <h3>Gestión de Usuarios</h3>
+                        <button class="btn btn-primary" onclick="showAddUserModal()">
+                            <span>➕</span> Agregar Usuario
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table class="users-table">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Email</th>
+                                    <th>Rol</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersTableBody">
+                                <!-- Usuarios se cargan aquí -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Gestión de Grupos -->
+                <div class="section-card">
+                    <div class="section-header">
+                        <h3>Gestión de Grupos</h3>
+                        <button class="btn btn-primary" onclick="showCreateGroupModal()">
+                            <span>➕</span> Crear Grupo
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table class="groups-table">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Proyecto</th>
+                                    <th>Líder</th>
+                                    <th>Miembros</th>
+                                    <th>Progreso</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="groupsTableBody">
+                                <!-- Grupos se cargan aquí -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Reportes del Sistema -->
+                <div class="section-card">
+                    <h3>Reportes del Sistema</h3>
+                    <div class="reports-grid">
+                        <div class="report-card">
+                            <h4>Actividad Reciente</h4>
+                            <div class="activity-list" id="recentActivity">
+                                <!-- Actividad reciente -->
+                            </div>
+                        </div>
+                        <div class="report-card">
+                            <h4>Estadísticas de Uso</h4>
+                            <div class="usage-stats" id="usageStats">
+                                <!-- Estadísticas de uso -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script type="module" src="admin.js"></script>
+</body>
+</html>

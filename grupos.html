@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Grupos - ColabU</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="grupos.css" />
+  </head>
+  <body>
+    <div class="app-container">
+      <header class="app-header">
+        <div class="header-content">
+          <div class="logo">
+            <h1>ColabU</h1>
+          </div>
+          <div class="hamburger">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+
+          <nav class="main-nav">
+            <a href="resumen.html" class="nav-link">Resumen</a>
+            <a href="grupos.html" class="nav-link active">Grupos</a>
+            <a href="tareas.html" class="nav-link">Tareas</a>
+            <a href="calendario.html" class="nav-link">Calendario</a>
+            <a href="chat.html" class="nav-link">Chat</a>
+          </nav>
+
+          <!-- Menú del usuario -->
+          <div class="user-menu">
+            <span class="user-name" id="userName">Usuario</span>
+            <div class="user-avatar" id="userAvatar">US</div>
+            <a href="#" class="logout-btn" id="logoutBtn">Cerrar Sesión</a>
+          </div>
+        </div>
+      </header>
+
+      <main class="main-content">
+        <div class="page-header">
+          <h2>Grupos de Trabajo</h2>
+          <p>Gestiona tus equipos de proyecto y colaboradores</p>
+        </div>
+
+        <div class="content-grid">
+          <!-- Aquí se cargarán automáticamente los grupos -->
+        </div>
+      </main>
+    </div>
+
+    <!-- IMPORTANTE: primero el cliente de Supabase -->
+    <script type="module" src="supabaseClient.js"></script>
+    <!-- Luego tu lógica de grupos -->
+    <script type="module" src="grupos.js"></script>
+
+    <script>
+      // Cerrar sesión
+      document
+        .getElementById("logoutBtn")
+        .addEventListener("click", function () {
+          localStorage.removeItem("currentUser");
+          window.location.href = "login.html";
+        });
+
+      // Mostrar nombre y avatar del usuario
+      document.addEventListener("DOMContentLoaded", function () {
+        const user = JSON.parse(localStorage.getItem("currentUser"));
+        if (user) {
+          const name = user.full_name || user.nombre || "Usuario";
+          document.getElementById("userName").textContent = name;
+          document.getElementById("userAvatar").textContent = name
+            .split(" ")
+            .map((n) => n[0])
+            .join("")
+            .substring(0, 2)
+            .toUpperCase();
+        }
+      });
+    </script>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const hamburger = document.querySelector(".hamburger");
+        const mainNav = document.querySelector(".main-nav");
+
+        if (hamburger && mainNav) {
+          hamburger.addEventListener("click", () => {
+            hamburger.classList.toggle("active");
+            mainNav.classList.toggle("open");
+          });
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Tareas - ColabU</title>
+    <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="tareas.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-content">
+                <div class="logo">
+                    <h1>ColabU</h1>
+                </div>
+                <div class="hamburger">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <nav class="main-nav">
+    <a href="resumen.html" class="nav-link">Resumen</a>
+    <a href="grupos.html" class="nav-link">Grupos</a>
+    <a href="tareas.html" class="nav-link">Tareas</a>
+    <a href="calendario.html" class="nav-link">Calendario</a>
+    <a href="chat.html" class="nav-link">Chat</a>
+  
+</nav>
+                <!-- En el header, actualizar la sección del usuario -->
+<div class="user-menu">
+    <span class="user-name" id="userName">Usuario</span>
+    <div class="user-avatar" id="userAvatar">US</div>
+    <a href="index.html" class="logout-btn">Cerrar Sesión</a>
+</div>
+
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="page-header">
+                <h2>Gestión de Tareas</h2>
+                <p>Asigna y supervisa las tareas del proyecto</p>
+            </div>
+
+            <div class="tasks-container">
+                <!-- Tarea 1 -->
+                <div class="task-card">
+                    <div class="task-header">
+                        <label class="checkbox-container">
+                            <input type="checkbox">
+                            <span class="checkmark"></span>
+                        </label>
+                        <h3 class="task-title">Diseño de base de datos</h3>
+                    </div>
+                    <p class="task-description">Crear el esquema de base de datos para el sistema de biblioteca</p>
+                    
+                    <div class="task-details">
+                        <div class="task-assignment">
+                            <span class="assigned-to">Asignada a: Ana García</span>
+                            <span class="task-project">Proyecto: Sistema de Gestión Biblioteca</span>
+                        </div>
+                        
+                        <div class="task-deadline overdue">
+                            <span class="deadline-date">14/10/2024 (Vencida)</span>
+                            <span class="task-status">Estado: En progreso</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tarea 2 -->
+                <div class="task-card">
+                    <div class="task-header">
+                        <label class="checkbox-container">
+                            <input type="checkbox">
+                            <span class="checkmark"></span>
+                        </label>
+                        <h3 class="task-title">Prototipo de interfaz</h3>
+                    </div>
+                    <p class="task-description">Desarrollar wireframes y mockups de la interfaz principal</p>
+                    
+                    <div class="task-details">
+                        <div class="task-assignment">
+                            <span class="assigned-to">Asignada a: María Rodríguez</span>
+                            <span class="task-project">Proyecto: Sistema de Gestión Biblioteca</span>
+                        </div>
+                        
+                        <div class="task-deadline overdue">
+                            <span class="deadline-date">19/10/2024 (Vencida)</span>
+                            <span class="task-status">Estado: Pendiente</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tarea 3 -->
+                <div class="task-card">
+                    <div class="task-header">
+                        <label class="checkbox-container">
+                            <input type="checkbox" checked>
+                            <span class="checkmark"></span>
+                        </label>
+                        <h3 class="task-title">Investigación de APIs</h3>
+                    </div>
+                    <p class="task-description">Investigar APIs disponibles para integración con transporte público</p>
+                    
+                    <div class="task-details">
+                        <div class="task-assignment">
+                            <span class="assigned-to">Asignada a: Pedro Martín</span>
+                            <span class="task-project">Proyecto: App de Movilidad Urbana</span>
+                        </div>
+                        
+                        <div class="task-deadline">
+                            <span class="deadline-date">9/10/2024</span>
+                            <span class="task-status completed">Estado: Completada</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Nueva Tarea -->
+                <div class="task-card new-task">
+                    <div class="new-task-content">
+                        <div class="add-icon">+</div>
+                        <h3>Documentación técnica</h3>
+                        <p>Crear nueva tarea</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+document.addEventListener("DOMContentLoaded", () => {
+  const hamburger = document.querySelector(".hamburger");
+  const mainNav = document.querySelector(".main-nav");
+
+  if (hamburger && mainNav) {
+    hamburger.addEventListener("click", () => {
+      hamburger.classList.toggle("active");
+      mainNav.classList.toggle("open");
+    });
+  }
+});
+</script>
+    <script type="module" src="tareas.js"></script>
+
+
+</body>
+</html>

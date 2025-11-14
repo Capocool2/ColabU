@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat - ColabU</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="chat.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <div class="header-content">
+                <div class="logo">
+                    <h1>ColabU</h1>
+                </div>
+                <div class="hamburger">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <nav class="main-nav">
+                    <a href="resumen.html" class="nav-link">Resumen</a>
+                    <a href="grupos.html" class="nav-link">Grupos</a>
+                    <a href="tareas.html" class="nav-link">Tareas</a>
+                    <a href="calendario.html" class="nav-link">Calendario</a>
+                    <a href="chat.html" class="nav-link active">Chat</a>
+                 
+                </nav>
+                               <!-- En el header, actualizar la sección del usuario -->
+<div class="user-menu">
+    <span class="user-name" id="userName">Usuario</span>
+    <div class="user-avatar" id="userAvatar">US</div>
+    <a href="index.html" class="logout-btn">Cerrar Sesión</a>
+</div>
+
+        </header>
+
+        <main class="main-content chat-container">
+            <div class="chat-layout">
+                <!-- Lista de Chats -->
+                <div class="chat-sidebar">
+                    <div class="chat-header">
+                        <h3>Conversaciones</h3>
+                        <button class="new-chat-btn">+ Nuevo</button>
+                    </div>
+                    <div class="chat-list">
+                        <div class="chat-item active" data-group="1">
+                            <div class="chat-avatar">EA</div>
+                            <div class="chat-info">
+                                <h4>Equipo Alpha</h4>
+                                <p>Carlos: ¿Avances en el diseño?</p>
+                                <span>10:30 AM</span>
+                            </div>
+                        </div>
+                        <div class="chat-item" data-group="2">
+                            <div class="chat-avatar">EB</div>
+                            <div class="chat-info">
+                                <h4>Equipo Beta</h4>
+                                <p>Pedro: API investigada ✅</p>
+                                <span>09:15 AM</span>
+                            </div>
+                        </div>
+                        <div class="chat-item" data-group="3">
+                            <div class="chat-avatar">PL</div>
+                            <div class="chat-info">
+                                <h4>Planificación</h4>
+                                <p>Reunión mañana a las 3 PM</p>
+                                <span>Ayer</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Área de Chat -->
+                <div class="chat-main">
+                    <div class="chat-conversation">
+                        <div class="conversation-header">
+                            <div class="conversation-info">
+                                <div class="group-avatar">EA</div>
+                                <div>
+                                    <h3>Equipo Alpha</h3>
+                                    <p>3 miembros en línea</p>
+                                </div>
+                            </div>
+                            <div class="conversation-actions">
+                               
+                                <button class="action-btn">⋮</button>
+                            </div>
+                        </div>
+
+                        <div class="messages-container">
+                            <div class="message-day">Hoy</div>
+                            
+                            <div class="message received">
+                                <div class="message-avatar">CL</div>
+                                <div class="message-content">
+                                    <div class="message-sender">Carlos López</div>
+                                    <div class="message-text">¿Alguien tiene avances en el diseño de la base de datos?</div>
+                                    <div class="message-time">10:15 AM</div>
+                                </div>
+                            </div>
+
+                            <div class="message sent">
+                                <div class="message-content">
+                                    <div class="message-text">Estoy trabajando en el esquema, tengo un 75% avanzado</div>
+                                    <div class="message-time">10:20 AM</div>
+                                </div>
+                                <div class="message-avatar">AG</div>
+                            </div>
+
+                            <div class="message received">
+                                <div class="message-avatar">MR</div>
+                                <div class="message-content">
+                                    <div class="message-sender">María Rodríguez</div>
+                                    <div class="message-text">Yo tengo los wireframes listos, los comparto en el drive</div>
+                                    <div class="message-time">10:25 AM</div>
+                                </div>
+                            </div>
+
+                            <div class="message received">
+                                <div class="message-avatar">CL</div>
+                                <div class="message-content">
+                                    <div class="message-sender">Carlos López</div>
+                                    <div class="message-text">Perfecto, coordinemos una reunión para revisar todo</div>
+                                    <div class="message-time">10:30 AM</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="message-input">
+                            
+                            <input type="text" placeholder="Escribe un mensaje..." class="message-text-input">
+                            <button class="send-btn">➤</button>
+                        </div>
+                    </div>
+
+                    <!-- Panel de Información del Grupo -->
+                    <div class="chat-info-panel">
+                        <div class="info-header">
+                            <h4>Información del Grupo</h4>
+                        </div>
+                        <div class="group-members">
+                            <h5>Miembros (3)</h5>
+                            <div class="member">
+                                <div class="member-avatar">AG</div>
+                                <div class="member-info">
+                                    <span>Ana García</span>
+                                    <small>Líder de proyecto</small>
+                                </div>
+                                <span class="online-status"></span>
+                            </div>
+                            <div class="member">
+                                <div class="member-avatar">CL</div>
+                                <div class="member-info">
+                                    <span>Carlos López</span>
+                                    <small>Desarrollador</small>
+                                </div>
+                                <span class="online-status"></span>
+                            </div>
+                            <div class="member">
+                                <div class="member-avatar">MR</div>
+                                <div class="member-info">
+                                    <span>María Rodríguez</span>
+                                    <small>Diseñadora UX</small>
+                                </div>
+                                <span class="online-status away"></span>
+                            </div>
+                        </div>
+                        <div class="group-files">
+                            <h5>Archivos Recientes</h5>
+                            <div class="file-item">
+                                <div class="file-icon">📄</div>
+                                <div class="file-info">
+                                    <span>esquema_bd.pdf</span>
+                                    <small>2 MB - Hoy</small>
+                                </div>
+                            </div>
+                            <div class="file-item">
+                                <div class="file-icon">🎨</div>
+                                <div class="file-info">
+                                    <span>wireframes.fig</span>
+                                    <small>5 MB - Ayer</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+document.addEventListener("DOMContentLoaded", () => {
+  const hamburger = document.querySelector(".hamburger");
+  const mainNav = document.querySelector(".main-nav");
+
+  if (hamburger && mainNav) {
+    hamburger.addEventListener("click", () => {
+      hamburger.classList.toggle("active");
+      mainNav.classList.toggle("open");
+    });
+  }
+});
+</script>
+    <script src="chat.js"></script>
+</body>
+</html>

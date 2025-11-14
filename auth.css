@@ -1,0 +1,277 @@
+/* Estilos específicos para páginas de autenticación */
+.auth-body {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    margin: 0;
+}
+
+.auth-container {
+    display: flex;
+    width: 100%;
+    max-width: 1000px;
+    min-height: 650px;
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+.welcome-section {
+    flex: 1;
+    background: linear-gradient(135deg, #2c3e50, #3498db);
+    color: white;
+    padding: 50px 40px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    text-align: center;
+}
+
+.auth-form-section {
+    flex: 1;
+    padding: 50px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.auth-logo {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.auth-logo h1 {
+    font-size: 2.8rem;
+    font-weight: 700;
+    color: white;
+    margin-bottom: 10px;
+}
+
+.welcome-section h2 {
+    font-size: 2rem;
+    margin-bottom: 20px;
+    line-height: 1.3;
+    font-weight: 600;
+}
+
+.welcome-section p {
+    font-size: 1.2rem;
+    opacity: 0.9;
+    line-height: 1.6;
+}
+
+.form-container {
+    width: 100%;
+    max-width: 400px;
+    text-align: center;
+}
+
+.form-container h2 {
+    color: #2c3e50;
+    margin-bottom: 10px;
+    font-size: 2rem;
+    font-weight: 600;
+}
+
+.form-container > p {
+    color: #7f8c8d;
+    margin-bottom: 40px;
+    font-size: 1.1rem;
+}
+
+.form-group {
+    margin-bottom: 25px;
+    text-align: left;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: #2c3e50;
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.form-group input[type="text"],
+.form-group input[type="email"],
+.form-group input[type="password"] {
+    width: 100%;
+    padding: 15px;
+    border: 2px solid #ecf0f1;
+    border-radius: 10px;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    background: #f8f9fa;
+}
+
+.form-group input[type="text"]:focus,
+.form-group input[type="email"]:focus,
+.form-group input[type="password"]:focus {
+    outline: none;
+    border-color: #3498db;
+    background: white;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.button-group {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-top: 30px;
+}
+
+.button-group .btn {
+    padding: 16px 30px;
+    font-size: 1.1rem;
+    border-radius: 10px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.btn-primary {
+    background: #3498db;
+    color: white;
+    border: none;
+}
+
+.btn-primary:hover {
+    background: #2980b9;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(52, 152, 219, 0.3);
+}
+
+.btn-secondary {
+    background: transparent;
+    color: #3498db;
+    border: 2px solid #3498db;
+}
+
+.btn-secondary:hover {
+    background: #3498db;
+    color: white;
+    transform: translateY(-2px);
+}
+
+.btn-full {
+    width: 100%;
+}
+
+.form-footer {
+    margin-top: 30px;
+    text-align: center;
+}
+
+.form-footer p {
+    color: #7f8c8d;
+    margin-bottom: 10px;
+}
+
+.form-footer a {
+    color: #3498db;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.form-footer a:hover {
+    text-decoration: underline;
+}
+
+/* Demo credentials box */
+.demo-credentials {
+    background: #e3f2fd;
+    border: 2px solid #2196f3;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+.demo-credentials h4 {
+    margin: 0 0 15px 0;
+    color: #1976d2;
+    font-size: 1.2rem;
+}
+
+.demo-email, .demo-password {
+    background: white;
+    border: 1px solid #bbdefb;
+    border-radius: 8px;
+    padding: 12px;
+    margin: 8px 0;
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+}
+
+.auto-fill-btn {
+    background: #2196f3;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 10px;
+    transition: all 0.3s ease;
+}
+
+.auto-fill-btn:hover {
+    background: #1976d2;
+    transform: translateY(-2px);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .auth-container {
+        flex-direction: column;
+        max-width: 500px;
+        min-height: auto;
+    }
+    
+    .welcome-section {
+        padding: 40px 30px;
+        text-align: center;
+    }
+    
+    .auth-form-section {
+        padding: 40px 30px;
+    }
+    
+    .auth-logo h1 {
+        font-size: 2.2rem;
+    }
+    
+    .welcome-section h2 {
+        font-size: 1.6rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .auth-body {
+        padding: 10px;
+    }
+    
+    .auth-container {
+        border-radius: 15px;
+    }
+    
+    .welcome-section,
+    .auth-form-section {
+        padding: 30px 20px;
+    }
+    
+    .auth-logo h1 {
+        font-size: 2rem;
+    }
+    
+    .welcome-section h2 {
+        font-size: 1.4rem;
+    }
+    
+    .form-container h2 {
+        font-size: 1.6rem;
+    }
+}
