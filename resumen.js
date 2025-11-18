@@ -1,294 +1,571 @@
-// Resumen General - ColabU
+// Resumen General - ColabU con Supabase
+import { supabase } from './supabaseClient.js';
+
+// Variables para almacenar suscripciones de Realtime
+let resumenGroupsSubscription = null;
+let resumenTasksSubscription = null;
+
 document.addEventListener("DOMContentLoaded", function () {
   loadDashboardData();
+  setupResumenRealtimeSubscriptions();
 });
 
-function loadDashboardData() {
+async function loadDashboardData() {
   const currentUser = JSON.parse(localStorage.getItem("currentUser"));
-  if (!currentUser) return;
+  if (!currentUser) {
+    console.warn("No hay usuario autenticado");
+    return;
+  }
 
-  // Cargar datos actualizados
-  updateDashboardStats();
-  loadGroupProgress();
-  loadRecentTasks();
-  loadRecentActivity();
+  // Cargar datos actualizados desde Supabase
+  await updateDashboardStats();
+  await loadGroupProgress();
+  await loadRecentTasks();
+  await loadRecentActivity();
 }
 
-function updateDashboardStats() {
+// Configurar suscripciones en tiempo real para resumen
+function setupResumenRealtimeSubscriptions() {
   const currentUser = JSON.parse(localStorage.getItem("currentUser"));
   if (!currentUser) return;
 
-  const groups = JSON.parse(localStorage.getItem("colabu_groups") || "[]");
-  const tasks = JSON.parse(localStorage.getItem("colabu_tasks") || "[]");
+  // Cancelar suscripciones anteriores si existen
+  if (resumenGroupsSubscription) {
+    supabase.removeChannel(resumenGroupsSubscription);
+  }
+  if (resumenTasksSubscription) {
+    supabase.removeChannel(resumenTasksSubscription);
+  }
 
-  // Filtrar grupos del usuario
-  const userGroups = groups.filter((group) =>
-    group.members.some((member) => member.user_id === currentUser.id)
-  );
-
-  // Calcular estadísticas reales
-  const totalGroups = userGroups.length;
-
-  // Tareas completadas
-  const completedTasks = tasks.filter(
-    (task) =>
-      task.completed && userGroups.some((group) => group.id === task.project_id)
-  ).length;
-
-  // Total de colaboradores únicos en todos los grupos
-  const allCollaborators = new Set();
-  userGroups.forEach((group) => {
-    group.members.forEach((member) => {
-      allCollaborators.add(member.user_id);
+  // Suscribirse a cambios en grupos
+  resumenGroupsSubscription = supabase
+    .channel('grupos-for-resumen-changes')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'grupos'
+      },
+      (payload) => {
+        console.log('Cambio en grupos (resumen) detectado:', payload);
+        // Recargar datos del dashboard
+        loadDashboardData();
+      }
+    )
+    .subscribe((status) => {
+      console.log('Estado de suscripción grupos (resumen):', status);
+      if (status === 'SUBSCRIBED') {
+        console.log('✅ Suscripción a grupos (resumen) activa');
+      }
     });
-  });
-  const totalCollaborators = allCollaborators.size;
 
-  // Progreso promedio de todos los grupos
-  const averageProgress =
-    userGroups.length > 0
-      ? Math.round(
-          userGroups.reduce((sum, group) => sum + group.progress, 0) /
-            userGroups.length
-        )
-      : 0;
+  // Suscribirse a cambios en tareas
+  resumenTasksSubscription = supabase
+    .channel('tareas-for-resumen-changes')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'tareas'
+      },
+      (payload) => {
+        console.log('Cambio en tareas (resumen) detectado:', payload);
+        // Recargar datos del dashboard
+        loadDashboardData();
+      }
+    )
+    .subscribe((status) => {
+      console.log('Estado de suscripción tareas (resumen):', status);
+      if (status === 'SUBSCRIBED') {
+        console.log('✅ Suscripción a tareas (resumen) activa');
+      }
+    });
+}
 
-  // Actualizar UI
-  const statCards = document.querySelectorAll(".stat-card");
-  if (statCards.length >= 4) {
-    statCards[0].querySelector("h3").textContent = totalGroups;
-    statCards[1].querySelector("h3").textContent = completedTasks;
-    statCards[2].querySelector("h3").textContent = averageProgress + "%";
-    statCards[3].querySelector("h3").textContent = totalCollaborators;
+// Limpiar suscripciones al salir de la página
+window.addEventListener('beforeunload', () => {
+  if (resumenGroupsSubscription) {
+    supabase.removeChannel(resumenGroupsSubscription);
+  }
+  if (resumenTasksSubscription) {
+    supabase.removeChannel(resumenTasksSubscription);
+  }
+});
 
-    // Actualizar textos descriptivos
-    statCards[0].querySelector("p").textContent = "Grupos Activos";
-    statCards[1].querySelector("p").textContent = "Tareas Completadas";
-    statCards[2].querySelector("p").textContent = "Progreso General";
-    statCards[3].querySelector("p").textContent = "Colaboradores";
+async function updateDashboardStats() {
+  const currentUser = JSON.parse(localStorage.getItem("currentUser"));
+  if (!currentUser) return;
+
+  try {
+    const currentUserId = currentUser.id;
+
+    // Obtener todos los grupos desde Supabase
+    const { data: allGroups, error: groupsError } = await supabase
+      .from('grupos')
+      .select('identificacion, miembros, creado_por, progreso');
+
+    if (groupsError) {
+      console.error('Error cargando grupos:', groupsError);
+      return;
+    }
+
+    // Filtrar grupos donde el usuario es miembro o creador
+    const userGroups = (allGroups || []).filter(group => {
+      // Si es el creador
+      if (group.creado_por === currentUserId) return true;
+      
+      // Si está en el array de miembros (jsonb)
+      if (group.miembros && Array.isArray(group.miembros)) {
+        return group.miembros.some(member => {
+          if (typeof member === 'object' && member.user_id) {
+            return member.user_id === currentUserId;
+          }
+          return member === currentUserId;
+        });
+      }
+      return false;
+    });
+
+    // Calcular estadísticas
+    const totalGroups = userGroups.length;
+
+    // Obtener IDs de grupos del usuario
+    const userGroupIds = userGroups.map(g => g.identificacion);
+
+    // Obtener tareas completadas de los grupos del usuario
+    let completedTasks = 0;
+    if (userGroupIds.length > 0) {
+      const { data: tasks, error: tasksError } = await supabase
+        .from('tareas')
+        .select('id, completada, proyecto_id')
+        .in('proyecto_id', userGroupIds)
+        .eq('completada', true);
+
+      if (!tasksError && tasks) {
+        completedTasks = tasks.length;
+      }
+    }
+
+    // Calcular total de colaboradores únicos en todos los grupos
+    const allCollaborators = new Set();
+    userGroups.forEach((group) => {
+      // Agregar creador
+      if (group.creado_por) {
+        allCollaborators.add(group.creado_por);
+      }
+      // Agregar miembros
+      if (group.miembros && Array.isArray(group.miembros)) {
+        group.miembros.forEach((member) => {
+          if (typeof member === 'object' && member.user_id) {
+            allCollaborators.add(member.user_id);
+          } else if (typeof member === 'string') {
+            allCollaborators.add(member);
+          }
+        });
+      }
+    });
+    const totalCollaborators = allCollaborators.size;
+
+    // Progreso promedio de todos los grupos
+    const averageProgress =
+      userGroups.length > 0
+        ? Math.round(
+            userGroups.reduce((sum, group) => sum + (parseFloat(group.progreso) || 0), 0) /
+              userGroups.length
+          )
+        : 0;
+
+    // Actualizar UI usando los IDs del HTML
+    const gruposActivosEl = document.getElementById("grupos-activos");
+    const tareasCompletadasEl = document.getElementById("tareas-completadas");
+    const progresoGeneralEl = document.getElementById("progreso-general");
+    const colaboradoresEl = document.getElementById("colaboradores");
+
+    if (gruposActivosEl) gruposActivosEl.textContent = totalGroups;
+    if (tareasCompletadasEl) tareasCompletadasEl.textContent = completedTasks;
+    if (progresoGeneralEl) progresoGeneralEl.textContent = averageProgress + "%";
+    if (colaboradoresEl) colaboradoresEl.textContent = totalCollaborators;
+  } catch (error) {
+    console.error('Error en updateDashboardStats:', error);
   }
 }
 
-function loadGroupProgress() {
+async function loadGroupProgress() {
   const currentUser = JSON.parse(localStorage.getItem("currentUser"));
   if (!currentUser) return;
 
-  const groups = JSON.parse(localStorage.getItem("colabu_groups") || "[]");
-  const userGroups = groups.filter((group) =>
-    group.members.some((member) => member.user_id === currentUser.id)
-  );
+  try {
+    const currentUserId = currentUser.id;
 
-  const progressList = document.querySelector(".progress-list");
-  if (!progressList) return;
+    // Obtener todos los grupos desde Supabase
+    const { data: allGroups, error: groupsError } = await supabase
+      .from('grupos')
+      .select('identificacion, nombre, nombre_del_proyecto, miembros, creado_por, progreso, creado_en')
+      .order('creado_en', { ascending: false });
 
-  progressList.innerHTML = "";
+    if (groupsError) {
+      console.error('Error cargando grupos:', groupsError);
+      return;
+    }
 
-  if (userGroups.length === 0) {
-    progressList.innerHTML = `
+    // Filtrar grupos donde el usuario es miembro o creador
+    const userGroups = (allGroups || []).filter(group => {
+      if (group.creado_por === currentUserId) return true;
+      if (group.miembros && Array.isArray(group.miembros)) {
+        return group.miembros.some(member => {
+          if (typeof member === 'object' && member.user_id) {
+            return member.user_id === currentUserId;
+          }
+          return member === currentUserId;
+        });
+      }
+      return false;
+    });
+
+    const progressList = document.getElementById("progreso-grupos");
+    if (!progressList) return;
+
+    progressList.innerHTML = "";
+
+    if (userGroups.length === 0) {
+      progressList.innerHTML = `
             <div class="empty-state">
                 <p>No tienes grupos activos</p>
                 <p>Crea tu primer grupo para empezar a colaborar</p>
             </div>
         `;
-    return;
-  }
+      return;
+    }
 
-  userGroups.forEach((group) => {
-    const progressElement = createProgressElement(group);
-    progressList.appendChild(progressElement);
-  });
+    userGroups.forEach((group) => {
+      const progressElement = createProgressElement(group);
+      progressList.appendChild(progressElement);
+    });
+  } catch (error) {
+    console.error('Error en loadGroupProgress:', error);
+  }
 }
 
 function createProgressElement(group) {
   const progressItem = document.createElement("div");
   progressItem.className = "progress-item";
+  const progress = parseFloat(group.progreso) || 0;
   progressItem.innerHTML = `
         <div class="project-info">
-            <h4>${group.name}</h4>
-            <span>${group.project_name}</span>
+            <h4>${group.nombre || 'Sin nombre'}</h4>
+            <span>${group.nombre_del_proyecto || 'Sin proyecto'}</span>
         </div>
         <div class="progress-bar">
-            <div class="progress-fill" style="width: ${group.progress}%"></div>
+            <div class="progress-fill" style="width: ${progress}%"></div>
         </div>
-        <span class="progress-text">${group.progress}%</span>
+        <span class="progress-text">${progress}%</span>
     `;
 
   // Agregar evento click para ir al grupo
   progressItem.style.cursor = "pointer";
   progressItem.addEventListener("click", function () {
-    window.location.href = `grupos.html?group=${group.id}`;
+    window.location.href = `grupos.html?group=${group.identificacion}`;
   });
 
   return progressItem;
 }
 
-function loadRecentTasks() {
+async function loadRecentTasks() {
   const currentUser = JSON.parse(localStorage.getItem("currentUser"));
   if (!currentUser) return;
 
-  const tasks = JSON.parse(localStorage.getItem("colabu_tasks") || "[]");
-  const groups = JSON.parse(localStorage.getItem("colabu_groups") || "[]");
+  try {
+    const currentUserId = currentUser.id;
 
-  // Filtrar tareas de los grupos del usuario y ordenar por fecha de creación
-  const userTasks = tasks
-    .filter((task) =>
-      groups.some(
-        (group) =>
-          group.id === task.project_id &&
-          group.members.some((member) => member.user_id === currentUser.id)
-      )
-    )
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-    .slice(0, 5); // Mostrar solo las 5 más recientes
+    // Obtener grupos del usuario
+    const { data: allGroups, error: groupsError } = await supabase
+      .from('grupos')
+      .select('identificacion, miembros, creado_por');
 
-  const recentTasks = document.querySelector(".recent-tasks");
-  if (!recentTasks) return;
+    if (groupsError) {
+      console.error('Error cargando grupos:', groupsError);
+      return;
+    }
 
-  recentTasks.innerHTML = "";
+    // Filtrar grupos donde el usuario es miembro o creador
+    const userGroupIds = (allGroups || []).filter(group => {
+      if (group.creado_por === currentUserId) return true;
+      if (group.miembros && Array.isArray(group.miembros)) {
+        return group.miembros.some(member => {
+          if (typeof member === 'object' && member.user_id) {
+            return member.user_id === currentUserId;
+          }
+          return member === currentUserId;
+        });
+      }
+      return false;
+    }).map(g => g.identificacion);
 
-  if (userTasks.length === 0) {
-    recentTasks.innerHTML = `
+    if (userGroupIds.length === 0) {
+      const recentTasks = document.getElementById("tareas-recientes");
+      if (recentTasks) {
+        recentTasks.innerHTML = `
             <div class="empty-state">
                 <p>No hay tareas recientes</p>
                 <p>Las tareas aparecerán aquí cuando se creen</p>
             </div>
         `;
-    return;
-  }
+      }
+      return;
+    }
 
-  userTasks.forEach((task) => {
-    const taskElement = createTaskElement(task);
-    recentTasks.appendChild(taskElement);
-  });
+    // Obtener tareas de los grupos del usuario desde Supabase
+    const { data: userTasks, error: tasksError } = await supabase
+      .from('tareas')
+      .select('*')
+      .in('proyecto_id', userGroupIds)
+      .order('creado_en', { ascending: false })
+      .limit(5);
+
+    if (tasksError) {
+      console.error('Error cargando tareas:', tasksError);
+      return;
+    }
+
+    const recentTasks = document.getElementById("tareas-recientes");
+    if (!recentTasks) return;
+
+    recentTasks.innerHTML = "";
+
+    if (!userTasks || userTasks.length === 0) {
+      recentTasks.innerHTML = `
+            <div class="empty-state">
+                <p>No hay tareas recientes</p>
+                <p>Las tareas aparecerán aquí cuando se creen</p>
+            </div>
+        `;
+      return;
+    }
+
+    // Convertir formato de Supabase a formato esperado y crear elementos
+    for (const task of userTasks) {
+      const formattedTask = {
+        id: task.id,
+        title: task.titulo,
+        description: task.descripcion,
+        assigned_to: task.asignado_a,
+        project_id: task.proyecto_id,
+        deadline: task.fecha_limite,
+        status: task.estado,
+        progress: parseFloat(task.progreso) || 0,
+        completed: task.completada || false,
+        created_at: task.creado_en,
+        submissions: task.entregas || []
+      };
+      
+      const taskElement = await createTaskElement(formattedTask);
+      recentTasks.appendChild(taskElement);
+    }
+  } catch (error) {
+    console.error('Error en loadRecentTasks:', error);
+  }
 }
 
-function createTaskElement(task) {
-  const groups = JSON.parse(localStorage.getItem("colabu_groups") || "[]");
-  const users = JSON.parse(localStorage.getItem("colabu_users") || "[]");
+async function createTaskElement(task) {
+  try {
+    // Obtener información del grupo desde Supabase
+    let groupName = "Sin grupo";
+    if (task.project_id) {
+      const { data: group, error: groupError } = await supabase
+        .from('grupos')
+        .select('nombre')
+        .eq('identificacion', task.project_id)
+        .single();
+      
+      if (!groupError && group) {
+        groupName = group.nombre;
+      }
+    }
 
-  const group = groups.find((g) => g.id === task.project_id);
-  const assignedUser = users.find((u) => u.id === task.assigned_to);
-  const isOverdue = new Date(task.deadline) < new Date() && !task.completed;
+    // Obtener información del usuario asignado desde Supabase
+    let assignedUserName = "Sin asignar";
+    if (task.assigned_to) {
+      const { data: user, error: userError } = await supabase
+        .from('usuarios')
+        .select('id, nombre')
+        .eq('id', task.assigned_to)
+        .single();
+      
+      if (!userError && user) {
+        assignedUserName = user.nombre;
+      }
+    }
 
-  const taskItem = document.createElement("div");
-  taskItem.className = `task-item ${
-    task.completed
-      ? "completed"
-      : task.status === "in-progress"
-      ? "in-progress"
-      : "pending"
-  } ${isOverdue ? "overdue" : ""}`;
-  taskItem.innerHTML = `
+    const isOverdue = task.deadline && new Date(task.deadline) < new Date() && !task.completed;
+
+    const taskItem = document.createElement("div");
+    taskItem.className = `task-item ${
+      task.completed
+        ? "completed"
+        : task.status === "in-progress"
+        ? "in-progress"
+        : "pending"
+    } ${isOverdue ? "overdue" : ""}`;
+    taskItem.innerHTML = `
         <div class="task-status"></div>
         <div class="task-content">
             <h4>${task.title}</h4>
-            <p>${group ? group.name : "Sin grupo"} - ${
-    assignedUser ? assignedUser.full_name : "Sin asignar"
-  }</p>
+            <p>${groupName} - ${assignedUserName}</p>
         </div>
         <span class="task-date">${formatTaskDate(task.created_at)}</span>
     `;
 
-  // Agregar evento click para ir a la tarea
-  taskItem.style.cursor = "pointer";
-  taskItem.addEventListener("click", function () {
-    window.location.href = `tareas.html?task=${task.id}`;
-  });
+    // Agregar evento click para ir a la tarea
+    taskItem.style.cursor = "pointer";
+    taskItem.addEventListener("click", function () {
+      window.location.href = `tareas.html?task=${task.id}`;
+    });
 
-  return taskItem;
+    return taskItem;
+  } catch (error) {
+    console.error('Error en createTaskElement:', error);
+    return document.createElement("div"); // Retornar elemento vacío en caso de error
+  }
 }
 
-function loadRecentActivity() {
+async function loadRecentActivity() {
   const currentUser = JSON.parse(localStorage.getItem("currentUser"));
   if (!currentUser) return;
 
-  const groups = JSON.parse(localStorage.getItem("colabu_groups") || "[]");
-  const tasks = JSON.parse(localStorage.getItem("colabu_tasks") || "[]");
+  try {
+    const currentUserId = currentUser.id;
 
-  // Simular actividad reciente basada en tareas y grupos
-  const recentActivity = generateRecentActivity(groups, tasks, currentUser);
+    // Obtener grupos del usuario
+    const { data: allGroups, error: groupsError } = await supabase
+      .from('grupos')
+      .select('identificacion, nombre, miembros, creado_por, progreso, creado_en');
 
-  const activityFeed = document.querySelector(".activity-feed");
-  if (!activityFeed) return;
+    if (groupsError) {
+      console.error('Error cargando grupos:', groupsError);
+      return;
+    }
 
-  activityFeed.innerHTML = "";
+    // Filtrar grupos donde el usuario es miembro o creador
+    const userGroups = (allGroups || []).filter(group => {
+      if (group.creado_por === currentUserId) return true;
+      if (group.miembros && Array.isArray(group.miembros)) {
+        return group.miembros.some(member => {
+          if (typeof member === 'object' && member.user_id) {
+            return member.user_id === currentUserId;
+          }
+          return member === currentUserId;
+        });
+      }
+      return false;
+    });
 
-  if (recentActivity.length === 0) {
-    activityFeed.innerHTML = `
+    const userGroupIds = userGroups.map(g => g.identificacion);
+
+    // Obtener tareas de los grupos del usuario
+    let userTasks = [];
+    if (userGroupIds.length > 0) {
+      const { data: tasks, error: tasksError } = await supabase
+        .from('tareas')
+        .select('*')
+        .in('proyecto_id', userGroupIds)
+        .order('creado_en', { ascending: false });
+
+      if (!tasksError && tasks) {
+        userTasks = tasks;
+      }
+    }
+
+    // Generar actividad reciente
+    const recentActivity = await generateRecentActivity(userGroups, userTasks, currentUser);
+
+    const activityFeed = document.getElementById("actividad-reciente");
+    if (!activityFeed) return;
+
+    activityFeed.innerHTML = "";
+
+    if (recentActivity.length === 0) {
+      activityFeed.innerHTML = `
             <div class="empty-state">
                 <p>No hay actividad reciente</p>
                 <p>La actividad aparecerá aquí cuando haya movimiento en tus proyectos</p>
             </div>
         `;
-    return;
-  }
+      return;
+    }
 
-  recentActivity.forEach((activity) => {
-    const activityElement = createActivityElement(activity);
-    activityFeed.appendChild(activityElement);
-  });
+    recentActivity.forEach((activity) => {
+      const activityElement = createActivityElement(activity);
+      activityFeed.appendChild(activityElement);
+    });
+  } catch (error) {
+    console.error('Error en loadRecentActivity:', error);
+  }
 }
 
-function generateRecentActivity(groups, tasks, currentUser) {
+async function generateRecentActivity(groups, tasks, currentUser) {
   const activities = [];
-  const userGroups = groups.filter((group) =>
-    group.members.some((member) => member.user_id === currentUser.id)
-  );
 
   // Actividad de tareas completadas
-  const completedTasks = tasks.filter(
-    (task) =>
-      task.completed && userGroups.some((group) => group.id === task.project_id)
-  );
-
-  completedTasks.slice(0, 2).forEach((task) => {
-    const group = groups.find((g) => g.id === task.project_id);
-    const user =
-      task.submissions && task.submissions.length > 0
-        ? task.submissions[task.submissions.length - 1].user_name
-        : "Un miembro";
+  const completedTasks = tasks.filter(task => task.completada === true);
+  
+  for (const task of completedTasks.slice(0, 2)) {
+    const group = groups.find(g => g.identificacion === task.proyecto_id);
+    
+    // Obtener información del usuario que completó la tarea
+    let userName = "Un miembro";
+    if (task.entregas && task.entregas.length > 0) {
+      const lastSubmission = task.entregas[task.entregas.length - 1];
+      if (lastSubmission.user_id) {
+        const { data: user } = await supabase
+          .from('usuarios')
+          .select('id, nombre')
+          .eq('id', lastSubmission.user_id)
+          .single();
+        
+        if (user) {
+          userName = user.nombre;
+        }
+      }
+    }
 
     activities.push({
       type: "task_completed",
-      user: user,
-      group: group ? group.name : "Proyecto",
-      task: task.title,
-      timestamp:
-        task.submissions && task.submissions.length > 0
-          ? task.submissions[task.submissions.length - 1].submitted_at
-          : task.created_at,
+      user: userName,
+      group: group ? group.nombre : "Proyecto",
+      task: task.titulo,
+      timestamp: task.entregas && task.entregas.length > 0
+        ? task.entregas[task.entregas.length - 1].submitted_at
+        : task.creado_en,
     });
-  });
+  }
 
   // Actividad de progreso de grupos
-  userGroups
-    .filter((group) => group.progress > 0)
+  groups
+    .filter((group) => (parseFloat(group.progreso) || 0) > 0)
     .slice(0, 2)
     .forEach((group) => {
       activities.push({
         type: "group_progress",
-        group: group.name,
-        progress: group.progress,
-        timestamp: group.created_at,
+        group: group.nombre,
+        progress: parseFloat(group.progreso) || 0,
+        timestamp: group.creado_en,
       });
     });
 
   // Actividad de nuevas tareas
   const newTasks = tasks
-    .filter(
-      (task) =>
-        !task.completed &&
-        userGroups.some((group) => group.id === task.project_id)
-    )
+    .filter((task) => !task.completada)
     .slice(0, 2);
 
   newTasks.forEach((task) => {
-    const group = groups.find((g) => g.id === task.project_id);
+    const group = groups.find(g => g.identificacion === task.proyecto_id);
     activities.push({
       type: "new_task",
-      group: group ? group.name : "Proyecto",
-      task: task.title,
-      timestamp: task.created_at,
+      group: group ? group.nombre : "Proyecto",
+      task: task.titulo,
+      timestamp: task.creado_en,
     });
   });
 
@@ -351,6 +628,7 @@ function createActivityElement(activity) {
 
 // Funciones auxiliares
 function getInitials(name) {
+  if (!name) return "??";
   return name
     .split(" ")
     .map((word) => word[0])
@@ -432,7 +710,6 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 });
 
-
 // CSS adicional para los nuevos estilos
 const resumenStyles = `
     .empty-state {
@@ -497,4 +774,4 @@ if (!document.querySelector("#resumen-styles")) {
   document.head.appendChild(styleElement);
 }
 
-console.log("Resumen.js cargado correctamente");
+console.log("Resumen.js cargado correctamente con Supabase");

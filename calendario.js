@@ -1,116 +1,206 @@
-// Calendario de Proyectos - ColabU (Versión independiente)
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('Calendario inicializando...');
-    initializeCalendar();
-});
+// Calendario de Proyectos - ColabU con Supabase
+import { supabase } from './supabaseClient.js';
 
-function initializeCalendar() {
- // Verificar autenticación al inicio de cada archivo JS principal
+let currentYear = new Date().getFullYear();
+let currentMonth = new Date().getMonth();
+
+// Variables para almacenar suscripciones de Realtime
+let calendarGroupsSubscription = null;
+let calendarTasksSubscription = null;
+
 document.addEventListener('DOMContentLoaded', function() {
-    // Verificar que el usuario esté logueado
+    // Verificar autenticación
     if (!localStorage.getItem('currentUser')) {
         alert('Por favor inicia sesión primero');
         window.location.href = 'login.html';
         return;
     }
     
-    // Tu código existente aquí...
-    initializeTuFuncion();
+    console.log('Calendario inicializando...');
+    initializeCalendar();
 });
-    // Inicializar datos demo si no existen
-    initDemoEvents();
-    
+
+async function initializeCalendar() {
     // Configurar calendario
     setupCalendarNavigation();
-    loadCurrentMonthCalendar();
-    loadAllEvents(); // Cambiado a cargar todos los eventos
+    await loadCalendarData();
+    displayMonthCalendar(currentYear, currentMonth);
+    
+    // Configurar suscripciones en tiempo real
+    setupCalendarRealtimeSubscriptions();
     
     console.log('Calendario listo!');
 }
 
-function isUserLoggedIn() {
-    return localStorage.getItem('currentUser') !== null;
-}
+// Configurar suscripciones en tiempo real para calendario
+function setupCalendarRealtimeSubscriptions() {
+    const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+    if (!currentUser) return;
 
-function initDemoEvents() {
-    if (!localStorage.getItem('colabu_events')) {
-        const today = new Date();
-        const yesterday = new Date(today);
-        yesterday.setDate(today.getDate() - 1);
-        const lastWeek = new Date(today);
-        lastWeek.setDate(today.getDate() - 7);
-        const nextWeek = new Date(today);
-        nextWeek.setDate(today.getDate() + 7);
-        const nextMonth = new Date(today);
-        nextMonth.setMonth(today.getMonth() + 1);
-
-        const demoEvents = [
-            // Eventos pasados
-            {
-                id: 1,
-                title: 'Reunión Inicial',
-                description: 'Kick-off del proyecto',
-                event_date: lastWeek.toISOString().split('T')[0],
-                event_type: 'meeting',
-                group_name: 'Equipo Alpha'
-            },
-            {
-                id: 2,
-                title: 'Investigación de Mercado',
-                description: 'Análisis de competencia',
-                event_date: yesterday.toISOString().split('T')[0],
-                event_type: 'milestone',
-                group_name: 'Equipo Beta'
-            },
-            // Eventos futuros
-            {
-                id: 3,
-                title: 'Entrega: Planificación',
-                description: 'Prototipo de API - mama linda',
-                event_date: '2025-09-22',
-                event_type: 'deadline',
-                group_name: 'Planificación'
-            },
-            {
-                id: 4,
-                title: 'Entrega: App Movilidad',
-                description: 'Equipo Beta',
-                event_date: '2024-11-29',
-                event_type: 'deadline',
-                group_name: 'Equipo Beta'
-            },
-            {
-                id: 5,
-                title: 'Entrega: Sistema Biblioteca',
-                description: 'Equipo Alpha',
-                event_date: '2024-12-14',
-                event_type: 'deadline',
-                group_name: 'Equipo Alpha'
-            },
-            {
-                id: 6,
-                title: 'Reunión de Progreso',
-                description: 'Revisión semanal de avances',
-                event_date: nextWeek.toISOString().split('T')[0],
-                event_type: 'meeting',
-                group_name: 'Equipo Alpha'
-            },
-            {
-                id: 7,
-                title: 'Presentación Final',
-                description: 'Demo del proyecto completo',
-                event_date: nextMonth.toISOString().split('T')[0],
-                event_type: 'milestone',
-                group_name: 'Todos los equipos'
-            }
-        ];
-        localStorage.setItem('colabu_events', JSON.stringify(demoEvents));
+    // Cancelar suscripciones anteriores si existen
+    if (calendarGroupsSubscription) {
+        supabase.removeChannel(calendarGroupsSubscription);
     }
+    if (calendarTasksSubscription) {
+        supabase.removeChannel(calendarTasksSubscription);
+    }
+
+    // Suscribirse a cambios en grupos
+    calendarGroupsSubscription = supabase
+        .channel('grupos-for-calendar-changes')
+        .on(
+            'postgres_changes',
+            {
+                event: '*',
+                schema: 'public',
+                table: 'grupos'
+            },
+            (payload) => {
+                console.log('Cambio en grupos (calendario) detectado:', payload);
+                // Recargar datos del calendario
+                loadCalendarData().then(() => {
+                    displayMonthCalendar(currentYear, currentMonth);
+                });
+            }
+        )
+        .subscribe((status) => {
+            console.log('Estado de suscripción grupos (calendario):', status);
+            if (status === 'SUBSCRIBED') {
+                console.log('✅ Suscripción a grupos (calendario) activa');
+            }
+        });
+
+    // Suscribirse a cambios en tareas
+    calendarTasksSubscription = supabase
+        .channel('tareas-for-calendar-changes')
+        .on(
+            'postgres_changes',
+            {
+                event: '*',
+                schema: 'public',
+                table: 'tareas'
+            },
+            (payload) => {
+                console.log('Cambio en tareas (calendario) detectado:', payload);
+                // Recargar datos del calendario
+                loadCalendarData().then(() => {
+                    displayMonthCalendar(currentYear, currentMonth);
+                });
+            }
+        )
+        .subscribe((status) => {
+            console.log('Estado de suscripción tareas (calendario):', status);
+            if (status === 'SUBSCRIBED') {
+                console.log('✅ Suscripción a tareas (calendario) activa');
+            }
+        });
 }
 
-function getEvents() {
-    const events = localStorage.getItem('colabu_events');
-    return events ? JSON.parse(events) : [];
+// Limpiar suscripciones al salir de la página
+window.addEventListener('beforeunload', () => {
+    if (calendarGroupsSubscription) {
+        supabase.removeChannel(calendarGroupsSubscription);
+    }
+    if (calendarTasksSubscription) {
+        supabase.removeChannel(calendarTasksSubscription);
+    }
+});
+
+async function loadCalendarData() {
+    await loadAllEvents();
+}
+
+async function loadAllEvents() {
+    const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+    if (!currentUser) return;
+
+    try {
+        const currentUserId = currentUser.id;
+
+        // Obtener grupos del usuario
+        const { data: allGroups, error: groupsError } = await supabase
+            .from('grupos')
+            .select('identificacion, nombre, nombre_del_proyecto, fecha_limite, miembros, creado_por');
+
+        if (groupsError) {
+            console.error('Error cargando grupos:', groupsError);
+            return;
+        }
+
+        // Filtrar grupos donde el usuario es miembro o creador
+        const userGroups = (allGroups || []).filter(group => {
+            if (group.creado_por === currentUserId) return true;
+            if (group.miembros && Array.isArray(group.miembros)) {
+                return group.miembros.some(member => {
+                    if (typeof member === 'object' && member.user_id) {
+                        return member.user_id === currentUserId;
+                    }
+                    return member === currentUserId;
+                });
+            }
+            return false;
+        });
+
+        const userGroupIds = userGroups.map(g => g.identificacion);
+
+        // Obtener tareas de los grupos del usuario
+        let userTasks = [];
+        if (userGroupIds.length > 0) {
+            const { data: tasks, error: tasksError } = await supabase
+                .from('tareas')
+                .select('id, titulo, descripcion, fecha_limite, proyecto_id, completada, estado')
+                .in('proyecto_id', userGroupIds)
+                .not('fecha_limite', 'is', null);
+
+            if (!tasksError && tasks) {
+                userTasks = tasks;
+            }
+        }
+
+        // Generar eventos desde tareas y grupos
+        const events = [];
+
+        // Eventos desde tareas (fechas límite)
+        userTasks.forEach(task => {
+            if (task.fecha_limite) {
+                const group = userGroups.find(g => g.identificacion === task.proyecto_id);
+                events.push({
+                    id: `task-${task.id}`,
+                    title: task.titulo,
+                    description: task.descripcion || 'Sin descripción',
+                    event_date: task.fecha_limite,
+                    event_type: task.completada ? 'completed' : 'deadline',
+                    group_name: group ? group.nombre : 'Sin grupo',
+                    group_id: task.proyecto_id,
+                    task_id: task.id,
+                    is_completed: task.completada
+                });
+            }
+        });
+
+        // Eventos desde grupos (fechas límite de proyecto)
+        userGroups.forEach(group => {
+            if (group.fecha_limite) {
+                events.push({
+                    id: `group-${group.identificacion}`,
+                    title: `Entrega: ${group.nombre_del_proyecto || group.nombre}`,
+                    description: `Fecha límite del proyecto ${group.nombre}`,
+                    event_date: group.fecha_limite,
+                    event_type: 'milestone',
+                    group_name: group.nombre,
+                    group_id: group.identificacion
+                });
+            }
+        });
+
+        // Mostrar eventos
+        displayAllEvents(events);
+        
+        // Actualizar calendario con los eventos
+        displayMonthCalendar(currentYear, currentMonth);
+    } catch (error) {
+        console.error('Error en loadAllEvents:', error);
+    }
 }
 
 function setupCalendarNavigation() {
@@ -126,12 +216,10 @@ function setupCalendarNavigation() {
     }
 }
 
-function loadCurrentMonthCalendar() {
-    const now = new Date();
-    displayMonthCalendar(now.getFullYear(), now.getMonth());
-}
-
 function displayMonthCalendar(year, month) {
+    currentYear = year;
+    currentMonth = month;
+    
     const monthNames = [
         'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
         'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
@@ -139,15 +227,20 @@ function displayMonthCalendar(year, month) {
 
     // Actualizar header
     const currentMonthElement = document.querySelector('.current-month');
+    const currentMonthTitle = document.getElementById('currentMonthTitle');
+    
     if (currentMonthElement) {
         currentMonthElement.textContent = `${monthNames[month]} ${year}`;
+    }
+    if (currentMonthTitle) {
+        currentMonthTitle.textContent = `${monthNames[month]} ${year}`;
     }
 
     // Generar calendario
     generateCalendarGrid(year, month);
 }
 
-function generateCalendarGrid(year, month) {
+async function generateCalendarGrid(year, month) {
     const calendarGrid = document.querySelector('.calendar-grid');
     if (!calendarGrid) return;
 
@@ -166,26 +259,30 @@ function generateCalendarGrid(year, month) {
         calendarGrid.appendChild(emptyDay);
     }
 
-    // Días del mes
+    // Obtener eventos para este mes
+    const events = await getEventsForMonth(year, month);
     const today = new Date();
-    const events = getEvents();
+    today.setHours(0, 0, 0, 0);
 
+    // Días del mes
     for (let day = 1; day <= daysInMonth; day++) {
         const dayElement = document.createElement('div');
         dayElement.className = 'calendar-day';
         dayElement.textContent = day;
 
+        const dayDate = new Date(year, month, day);
+        dayDate.setHours(0, 0, 0, 0);
+
         // Marcar día actual
-        if (day === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
+        if (dayDate.getTime() === today.getTime()) {
             dayElement.classList.add('today');
         }
 
         // Marcar días con eventos
         const dayEvents = events.filter(event => {
             const eventDate = new Date(event.event_date);
-            return eventDate.getDate() === day && 
-                   eventDate.getMonth() === month && 
-                   eventDate.getFullYear() === year;
+            eventDate.setHours(0, 0, 0, 0);
+            return eventDate.getTime() === dayDate.getTime();
         });
 
         if (dayEvents.length > 0) {
@@ -194,15 +291,13 @@ function generateCalendarGrid(year, month) {
             // Diferenciar eventos pasados vs futuros
             const hasPastEvents = dayEvents.some(event => {
                 const eventDate = new Date(event.event_date);
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
+                eventDate.setHours(0, 0, 0, 0);
                 return eventDate < today;
             });
             
             const hasFutureEvents = dayEvents.some(event => {
                 const eventDate = new Date(event.event_date);
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
+                eventDate.setHours(0, 0, 0, 0);
                 return eventDate >= today;
             });
 
@@ -232,52 +327,126 @@ function generateCalendarGrid(year, month) {
     }
 }
 
+async function getEventsForMonth(year, month) {
+    const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+    if (!currentUser) return [];
+
+    try {
+        const currentUserId = currentUser.id;
+
+        // Obtener grupos del usuario
+        const { data: allGroups } = await supabase
+            .from('grupos')
+            .select('identificacion, nombre, nombre_del_proyecto, fecha_limite, miembros, creado_por');
+
+        const userGroups = (allGroups || []).filter(group => {
+            if (group.creado_por === currentUserId) return true;
+            if (group.miembros && Array.isArray(group.miembros)) {
+                return group.miembros.some(member => {
+                    if (typeof member === 'object' && member.user_id) {
+                        return member.user_id === currentUserId;
+                    }
+                    return member === currentUserId;
+                });
+            }
+            return false;
+        });
+
+        const userGroupIds = userGroups.map(g => g.identificacion);
+
+        // Obtener tareas del mes
+        const startDate = new Date(year, month, 1).toISOString().split('T')[0];
+        const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
+
+        let userTasks = [];
+        if (userGroupIds.length > 0) {
+            const { data: tasks } = await supabase
+                .from('tareas')
+                .select('id, titulo, descripcion, fecha_limite, proyecto_id, completada')
+                .in('proyecto_id', userGroupIds)
+                .gte('fecha_limite', startDate)
+                .lte('fecha_limite', endDate);
+
+            if (tasks) userTasks = tasks;
+        }
+
+        // Generar eventos
+        const events = [];
+
+        userTasks.forEach(task => {
+            if (task.fecha_limite) {
+                const group = userGroups.find(g => g.identificacion === task.proyecto_id);
+                events.push({
+                    id: `task-${task.id}`,
+                    title: task.titulo,
+                    description: task.descripcion || 'Sin descripción',
+                    event_date: task.fecha_limite,
+                    event_type: task.completada ? 'completed' : 'deadline',
+                    group_name: group ? group.nombre : 'Sin grupo',
+                    is_completed: task.completada
+                });
+            }
+        });
+
+        // Agregar eventos de grupos
+        userGroups.forEach(group => {
+            if (group.fecha_limite) {
+                const groupDate = new Date(group.fecha_limite);
+                if (groupDate.getMonth() === month && groupDate.getFullYear() === year) {
+                    events.push({
+                        id: `group-${group.identificacion}`,
+                        title: `Entrega: ${group.nombre_del_proyecto || group.nombre}`,
+                        description: `Fecha límite del proyecto ${group.nombre}`,
+                        event_date: group.fecha_limite,
+                        event_type: 'milestone',
+                        group_name: group.nombre
+                    });
+                }
+            }
+        });
+
+        return events;
+    } catch (error) {
+        console.error('Error obteniendo eventos:', error);
+        return [];
+    }
+}
+
 function navigateToPreviousMonth() {
-    const currentMonthText = document.querySelector('.current-month').textContent;
-    const [monthName, year] = currentMonthText.split(' ');
-    const monthNames = [
-        'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-    ];
-    
-    let monthIndex = monthNames.indexOf(monthName);
-    let yearNumber = parseInt(year);
-    
-    if (monthIndex === 0) {
-        monthIndex = 11;
-        yearNumber--;
+    if (currentMonth === 0) {
+        currentMonth = 11;
+        currentYear--;
     } else {
-        monthIndex--;
+        currentMonth--;
     }
     
-    displayMonthCalendar(yearNumber, monthIndex);
+    displayMonthCalendar(currentYear, currentMonth);
     loadAllEvents();
 }
 
 function navigateToNextMonth() {
-    const currentMonthText = document.querySelector('.current-month').textContent;
-    const [monthName, year] = currentMonthText.split(' ');
-    const monthNames = [
-        'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-    ];
-    
-    let monthIndex = monthNames.indexOf(monthName);
-    let yearNumber = parseInt(year);
-    
-    if (monthIndex === 11) {
-        monthIndex = 0;
-        yearNumber++;
+    if (currentMonth === 11) {
+        currentMonth = 0;
+        currentYear++;
     } else {
-        monthIndex++;
+        currentMonth++;
     }
     
-    displayMonthCalendar(yearNumber, monthIndex);
+    displayMonthCalendar(currentYear, currentMonth);
     loadAllEvents();
 }
 
-function loadAllEvents() {
-    const events = getEvents();
+async function displayAllEvents(events) {
+    const eventsList = document.querySelector('.events-list');
+    if (!eventsList) return;
+
+    eventsList.innerHTML = '';
+
+    if (!events || events.length === 0) {
+        eventsList.innerHTML = '<div class="no-events">No hay eventos registrados</div>';
+        return;
+    }
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
@@ -286,28 +455,19 @@ function loadAllEvents() {
         const eventDate = new Date(event.event_date);
         eventDate.setHours(0, 0, 0, 0);
         return eventDate < today;
-    }).sort((a, b) => new Date(b.event_date) - new Date(a.event_date)); // Más recientes primero
+    }).sort((a, b) => new Date(b.event_date) - new Date(a.event_date));
 
     const futureEvents = events.filter(event => {
         const eventDate = new Date(event.event_date);
         eventDate.setHours(0, 0, 0, 0);
         return eventDate >= today;
-    }).sort((a, b) => new Date(a.event_date) - new Date(b.event_date)); // Más próximos primero
-
-    displayAllEvents(pastEvents, futureEvents);
-}
-
-function displayAllEvents(pastEvents, futureEvents) {
-    const eventsList = document.querySelector('.events-list');
-    if (!eventsList) return;
-
-    eventsList.innerHTML = '';
+    }).sort((a, b) => new Date(a.event_date) - new Date(b.event_date));
 
     // Título para eventos futuros
     if (futureEvents.length > 0) {
         const futureHeader = document.createElement('div');
         futureHeader.className = 'events-section-header';
-        futureHeader.innerHTML = '<h4> Próximos Eventos</h4>';
+        futureHeader.innerHTML = '<h4>🔜 Próximos Eventos</h4>';
         eventsList.appendChild(futureHeader);
 
         futureEvents.forEach(event => {
@@ -345,6 +505,7 @@ function createEventElement(event, type) {
     
     const isPast = eventDay < today;
     const eventType = isPast ? 'past' : 'future';
+    const isCompleted = event.is_completed || false;
 
     const eventItem = document.createElement('div');
     eventItem.className = `event-item event-${eventType}`;
@@ -354,11 +515,11 @@ function createEventElement(event, type) {
             <span class="event-month">${monthNames[eventDate.getMonth()]}</span>
         </div>
         <div class="event-info">
-            <h4>${event.title}</h4>
-            <p>${event.description}</p>
+            <h4>${escapeHtml(event.title)}</h4>
+            <p>${escapeHtml(event.description)}</p>
             <div class="event-meta">
-                <small class="event-group">${event.group_name}</small>
-                <small class="event-status">${isPast ? '✅ Completado' : '⏰ Pendiente'}</small>
+                <small class="event-group">${escapeHtml(event.group_name)}</small>
+                <small class="event-status">${isCompleted ? '✅ Completado' : (isPast ? '✅ Pasado' : '⏰ Pendiente')}</small>
             </div>
         </div>
     `;
@@ -370,8 +531,8 @@ function createEventElement(event, type) {
     return eventItem;
 }
 
-function showDayEvents(day, month, year) {
-    const events = getEvents();
+async function showDayEvents(day, month, year) {
+    const events = await getEventsForMonth(year, month);
     const monthNames = [
         'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
         'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
@@ -428,12 +589,13 @@ function showEventDetails(event) {
     const eventDay = new Date(event.event_date);
     eventDay.setHours(0, 0, 0, 0);
     const isPast = eventDay < today;
+    const isCompleted = event.is_completed || false;
 
     const modalHTML = `
         <div class="event-modal">
             <div class="modal-content">
                 <div class="modal-header ${isPast ? 'past-event' : 'future-event'}">
-                    <h3>${event.title} ${isPast ? '✅' : '⏰'}</h3>
+                    <h3>${escapeHtml(event.title)} ${isCompleted ? '✅' : (isPast ? '✅' : '⏰')}</h3>
                     <button class="close-modal">&times;</button>
                 </div>
                 <div class="modal-body">
@@ -441,20 +603,22 @@ function showEventDetails(event) {
                         <strong>Fecha:</strong> ${formattedDate}
                     </div>
                     <div class="event-detail">
-                        <strong>Descripción:</strong> ${event.description}
+                        <strong>Descripción:</strong> ${escapeHtml(event.description)}
                     </div>
                     <div class="event-detail">
-                        <strong>Grupo:</strong> ${event.group_name}
+                        <strong>Grupo:</strong> ${escapeHtml(event.group_name)}
                     </div>
                     <div class="event-detail">
-                        <strong>Tipo:</strong> ${event.event_type}
+                        <strong>Tipo:</strong> ${getEventTypeLabel(event.event_type)}
                     </div>
                     <div class="event-detail">
-                        <strong>Estado:</strong> ${isPast ? '✅ Completado' : '⏰ Pendiente'}
+                        <strong>Estado:</strong> ${isCompleted ? '✅ Completado' : (isPast ? '✅ Pasado' : '⏰ Pendiente')}
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-secondary" onclick="closeEventModal()">Cerrar</button>
+                    ${event.task_id ? `<button class="btn btn-primary" onclick="window.location.href='tareas.html?task=${event.task_id}'">Ver Tarea</button>` : ''}
+                    ${event.group_id ? `<button class="btn btn-primary" onclick="window.location.href='grupos.html?group=${event.group_id}'">Ver Grupo</button>` : ''}
                 </div>
             </div>
         </div>
@@ -473,6 +637,23 @@ function showEventDetails(event) {
     });
 }
 
+function getEventTypeLabel(type) {
+    const labels = {
+        'deadline': 'Fecha Límite',
+        'milestone': 'Hito del Proyecto',
+        'meeting': 'Reunión',
+        'completed': 'Completado'
+    };
+    return labels[type] || type;
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 function closeEventModal() {
     const modal = document.querySelector('.event-modal');
     if (modal) {
@@ -483,10 +664,7 @@ function closeEventModal() {
 // Hacer función global
 window.closeEventModal = closeEventModal;
 
-
-
-
-// Agregar CSS dinámico
+// CSS adicional
 const calendarStyles = `
     .calendar-day {
         cursor: pointer;
@@ -549,6 +727,10 @@ const calendarStyles = `
         margin-bottom: 0.8rem;
         border-radius: 8px;
         border-left: 4px solid #3498db;
+        display: flex;
+        gap: 1rem;
+        padding: 1rem;
+        background: white;
     }
     .event-item.event-past {
         border-left-color: #6c757d;
@@ -561,6 +743,7 @@ const calendarStyles = `
     }
     .event-item:hover {
         transform: translateX(5px);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
     
     .event-date {
@@ -570,6 +753,7 @@ const calendarStyles = `
         border-radius: 8px;
         text-align: center;
         min-width: 60px;
+        flex-shrink: 0;
     }
     .event-date-past {
         background: #6c757d !important;
@@ -588,6 +772,21 @@ const calendarStyles = `
         font-size: 0.8rem;
         font-weight: 600;
         text-transform: uppercase;
+    }
+    
+    .event-info {
+        flex: 1;
+    }
+    
+    .event-info h4 {
+        margin: 0 0 0.5rem 0;
+        color: #2c3e50;
+    }
+    
+    .event-info p {
+        margin: 0 0 0.5rem 0;
+        color: #7f8c8d;
+        font-size: 0.9rem;
     }
     
     .event-meta {
@@ -620,6 +819,7 @@ const calendarStyles = `
         align-items: center;
         justify-content: center;
         z-index: 1000;
+        backdrop-filter: blur(4px);
     }
     .event-modal .modal-content {
         background: white;
@@ -653,6 +853,18 @@ const calendarStyles = `
         font-size: 1.5rem;
         cursor: pointer;
         color: #7f8c8d;
+        padding: 0;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        transition: all 0.3s ease;
+    }
+    .close-modal:hover {
+        background: #f8f9fa;
+        color: #e74c3c;
     }
     .modal-body {
         padding: 1.5rem;
@@ -677,6 +889,28 @@ const calendarStyles = `
         padding: 2rem;
         font-style: italic;
     }
+    .btn {
+        padding: 0.5rem 1rem;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    .btn-primary {
+        background: #3498db;
+        color: white;
+    }
+    .btn-primary:hover {
+        background: #2980b9;
+    }
+    .btn-secondary {
+        background: #95a5a6;
+        color: white;
+    }
+    .btn-secondary:hover {
+        background: #7f8c8d;
+    }
 `;
 
 // Injectar estilos
@@ -686,3 +920,5 @@ if (!document.querySelector('#calendar-styles')) {
     styleElement.textContent = calendarStyles;
     document.head.appendChild(styleElement);
 }
+
+console.log('Calendario.js cargado correctamente con Supabase');

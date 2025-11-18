@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', function() {
 async function loadAdminDashboard() {
     await updateAdminStats();
     await loadUsersTable();
-    loadGroupsTable();
+    await loadGroupsTable();
     await loadSystemReports();
 }
 
@@ -159,75 +159,128 @@ function createUserTableRow(user) {
     return row;
 }
 
-function loadGroupsTable() {
-    const groups = JSON.parse(localStorage.getItem('colabu_groups') || '[]');
-    const users = JSON.parse(localStorage.getItem('colabu_users') || '[]');
+async function loadGroupsTable() {
     const container = document.getElementById('groupsTableBody');
     
     if (!container) return;
 
-    container.innerHTML = '';
+    container.innerHTML = '<tr><td colspan="6" class="empty-state"><p>Cargando grupos...</p></td></tr>';
 
-    if (groups.length === 0) {
+    try {
+        // Obtener grupos desde Supabase
+        const { data: groups, error: groupsError } = await supabase
+            .from('grupos')
+            .select('identificacion, nombre, nombre_del_proyecto, descripcion, fecha_limite, creado_por, creado_en, progreso, miembros')
+            .order('creado_en', { ascending: false });
+
+        if (groupsError) {
+            console.error('Error cargando grupos:', groupsError);
+            container.innerHTML = `
+                <tr>
+                    <td colspan="6" class="empty-state">
+                        <p>Error al cargar grupos: ${groupsError.message}</p>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        container.innerHTML = '';
+
+        if (!groups || groups.length === 0) {
+            container.innerHTML = `
+                <tr>
+                    <td colspan="6" class="empty-state">
+                        <p>No hay grupos activos</p>
+                        <p>Usa el botón "Crear Grupo" para crear el primero</p>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        // Obtener información de los creadores
+        const creatorIds = groups.map(g => g.creado_por).filter(Boolean);
+        let creatorsMap = {};
+        
+        if (creatorIds.length > 0) {
+            const { data: creators } = await supabase
+                .from('usuarios')
+                .select('id, nombre')
+                .in('id', creatorIds);
+            
+            if (creators) {
+                creatorsMap = creators.reduce((acc, creator) => {
+                    acc[creator.id] = creator.nombre;
+                    return acc;
+                }, {});
+            }
+        }
+
+        // Crear filas para cada grupo
+        groups.forEach(group => {
+            const row = createGroupTableRow(group, creatorsMap);
+            container.appendChild(row);
+        });
+    } catch (err) {
+        console.error('Error en loadGroupsTable:', err);
         container.innerHTML = `
             <tr>
                 <td colspan="6" class="empty-state">
-                    <p>No hay grupos activos</p>
-                    <p>Usa el botón "Crear Grupo" para crear el primero</p>
+                    <p>Error al cargar grupos</p>
                 </td>
             </tr>
         `;
-        return;
     }
-
-    groups.forEach(group => {
-        const row = createGroupTableRow(group, users);
-        container.appendChild(row);
-    });
 }
 
-function createGroupTableRow(group, users) {
-    const leader = group.members.find(m => m.role.includes('Líder'));
-    const leaderUser = users.find(u => u.id === leader?.user_id);
-    
+function createGroupTableRow(group, creatorsMap) {
     const row = document.createElement('tr');
+    
+    // Obtener nombre del creador
+    const creatorName = creatorsMap[group.creado_por] || 'Usuario desconocido';
+    
+    // Procesar miembros (jsonb)
+    const miembros = Array.isArray(group.miembros) ? group.miembros : [];
+    const miembrosCount = miembros.length;
+    
+    // Calcular progreso
+    const progreso = group.progreso ? parseFloat(group.progreso) : 0;
     
     row.innerHTML = `
         <td>
-            <div style="font-weight: 600; color: #2c3e50;">${group.name}</div>
-            <div style="font-size: 0.8rem; color: #7f8c8d;">ID: ${group.id}</div>
+            <div style="font-weight: 600; color: #2c3e50;">${group.nombre || 'Sin nombre'}</div>
+            <div style="font-size: 0.8rem; color: #7f8c8d;">ID: ${group.identificacion.substring(0, 8)}...</div>
         </td>
-        <td>${group.project_name}</td>
+        <td>${group.nombre_del_proyecto || 'Sin proyecto'}</td>
         <td>
-            ${leaderUser ? `
-                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                    <div style="width: 32px; height: 32px; background: #3498db; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.7rem;">
-                        ${getUserInitials(leaderUser.full_name)}
-                    </div>
-                    <span>${leaderUser.full_name}</span>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <div style="width: 32px; height: 32px; background: #3498db; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.7rem;">
+                    ${getUserInitials(creatorName)}
                 </div>
-            ` : 'No asignado'}
+                <span>${creatorName}</span>
+            </div>
         </td>
         <td>
-            <span style="font-weight: 600; color: #3498db;">${group.members.length} miembros</span>
+            <span style="font-weight: 600; color: #3498db;">${miembrosCount} ${miembrosCount === 1 ? 'miembro' : 'miembros'}</span>
         </td>
         <td>
             <div class="progress-display">
                 <div class="progress-bar-small">
-                    <div class="progress-fill" style="width: ${group.progress || 0}%"></div>
+                    <div class="progress-fill" style="width: ${progreso}%"></div>
                 </div>
-                <span style="font-weight: 600; min-width: 40px;">${group.progress || 0}%</span>
+                <span style="font-weight: 600; min-width: 40px;">${progreso}%</span>
             </div>
         </td>
         <td>
             <div class="action-buttons">
-                <button class="btn btn-sm btn-outline" onclick="viewGroup(${group.id})">
+                <button class="btn btn-sm btn-outline" onclick="viewGroup('${group.identificacion}')">
                     <span>👁️</span> Ver
                 </button>
-                <button class="btn btn-sm btn-warning" onclick="editGroup(${group.id})">
+                <button class="btn btn-sm btn-warning" onclick="editGroup('${group.identificacion}')">
                     <span>✏️</span> Editar
                 </button>
-                <button class="btn btn-sm btn-danger" onclick="deleteGroup(${group.id})">
+                <button class="btn btn-sm btn-danger" onclick="deleteGroup('${group.identificacion}')">
                     <span>🗑️</span> Eliminar
                 </button>
             </div>
@@ -491,9 +544,21 @@ function showAddUserModal() {
     }, 100);
 }
 
-function showCreateGroupModal() {
-    const users = JSON.parse(localStorage.getItem('colabu_users') || '[]');
-    const teachers = users.filter(u => u.role === 'teacher');
+async function showCreateGroupModal() {
+    // Obtener docentes desde Supabase
+    const { data: teachers, error } = await supabase
+        .from('usuarios')
+        .select('id, nombre, correo, rol')
+        .or('rol.eq.docente,rol.eq.Docente')
+        .order('nombre', { ascending: true });
+
+    if (error) {
+        console.error('Error cargando docentes:', error);
+        showAlert('Error al cargar la lista de docentes', 'error');
+        return;
+    }
+
+    const teachersList = teachers || [];
 
     const modalHTML = `
         <div class="modal-overlay">
@@ -520,8 +585,8 @@ function showCreateGroupModal() {
                             <label for="groupLeader">Líder del Grupo *</label>
                             <select id="groupLeader" required>
                                 <option value="">Seleccionar docente...</option>
-                                ${teachers.map(teacher => `
-                                    <option value="${teacher.id}">${teacher.full_name} - ${teacher.email}</option>
+                                ${teachersList.map(teacher => `
+                                    <option value="${teacher.id}">${teacher.nombre} - ${teacher.correo}</option>
                                 `).join('')}
                             </select>
                         </div>
@@ -707,11 +772,11 @@ async function addNewUser() {
     }
 }
 
-function createNewGroup() {
+async function createNewGroup() {
     const name = document.getElementById('groupName')?.value.trim();
     const projectName = document.getElementById('projectName')?.value.trim();
     const description = document.getElementById('groupDescription')?.value.trim();
-    const leaderId = parseInt(document.getElementById('groupLeader')?.value);
+    const leaderId = document.getElementById('groupLeader')?.value;
     const deadline = document.getElementById('groupDeadline')?.value;
 
     if (!name || !projectName || !leaderId) {
@@ -719,42 +784,61 @@ function createNewGroup() {
         return;
     }
 
-    const users = JSON.parse(localStorage.getItem('colabu_users') || '[]');
-    const leaderUser = users.find(u => u.id === leaderId);
+    // Verificar que el líder existe en Supabase
+    const { data: leaderUser, error: leaderError } = await supabase
+        .from('usuarios')
+        .select('id, nombre')
+        .eq('id', leaderId)
+        .maybeSingle();
     
-    if (!leaderUser) {
+    if (leaderError || !leaderUser) {
         showAlert('El docente seleccionado no existe', 'error');
         return;
     }
 
-    const groups = JSON.parse(localStorage.getItem('colabu_groups') || '[]');
-    
-    const newGroup = {
-        id: Date.now(),
-        name: name,
-        project_name: projectName,
-        description: description || 'Sin descripción',
-        deadline: deadline,
-        created_by: leaderId,
-        created_at: new Date().toISOString(),
-        progress: 0,
-        members: [
-            {
-                user_id: leaderId,
-                name: leaderUser.full_name,
-                role: 'Líder de proyecto',
-                avatar: getUserInitials(leaderUser.full_name)
-            }
-        ]
-    };
+    // Obtener usuario actual para creado_por
+    const currentUserStr = localStorage.getItem('currentUser');
+    const currentUser = currentUserStr ? JSON.parse(currentUserStr) : null;
+    const creadoPor = currentUser?.id || leaderId;
 
-    groups.push(newGroup);
-    localStorage.setItem('colabu_groups', JSON.stringify(groups));
-    
-    showAlert(`Grupo "${name}" creado exitosamente`, 'success');
-    closeModal();
-    loadGroupsTable();
-    updateAdminStats();
+    try {
+        // Crear grupo en Supabase
+        const { data: newGroup, error: groupError } = await supabase
+            .from('grupos')
+            .insert([
+                {
+                    nombre: name,
+                    nombre_del_proyecto: projectName,
+                    descripcion: description || null,
+                    fecha_limite: deadline || null,
+                    creado_por: creadoPor,
+                    progreso: 0,
+                    miembros: [
+                        {
+                            user_id: leaderId,
+                            nombre: leaderUser.nombre,
+                            role: 'Líder de proyecto'
+                        }
+                    ]
+                }
+            ])
+            .select()
+            .single();
+
+        if (groupError) {
+            console.error('Error creando grupo:', groupError);
+            showAlert('Error al crear el grupo: ' + groupError.message, 'error');
+            return;
+        }
+
+        showAlert(`Grupo "${name}" creado exitosamente`, 'success');
+        closeModal();
+        await loadGroupsTable();
+        await updateAdminStats();
+    } catch (err) {
+        console.error('Error en createNewGroup:', err);
+        showAlert('Ocurrió un error inesperado al crear el grupo', 'error');
+    }
 }
 
 function deactivateUser(userId) {
@@ -777,19 +861,31 @@ function deactivateUser(userId) {
     }
 }
 
-function deleteGroup(groupId) {
+async function deleteGroup(groupId) {
     if (!confirm('¿Estás seguro de que quieres eliminar este grupo? Esta acción no se puede deshacer y se perderán todos los datos del grupo.')) {
         return;
     }
 
-    const groups = JSON.parse(localStorage.getItem('colabu_groups') || '[]');
-    const filteredGroups = groups.filter(g => g.id !== groupId);
-    
-    localStorage.setItem('colabu_groups', JSON.stringify(filteredGroups));
-    
-    showAlert('Grupo eliminado exitosamente', 'success');
-    loadGroupsTable();
-    updateAdminStats();
+    try {
+        // Eliminar grupo de Supabase
+        const { error } = await supabase
+            .from('grupos')
+            .delete()
+            .eq('identificacion', groupId);
+
+        if (error) {
+            console.error('Error eliminando grupo:', error);
+            showAlert('Error al eliminar el grupo: ' + error.message, 'error');
+            return;
+        }
+
+        showAlert('Grupo eliminado exitosamente', 'success');
+        await loadGroupsTable();
+        await updateAdminStats();
+    } catch (err) {
+        console.error('Error en deleteGroup:', err);
+        showAlert('Ocurrió un error inesperado al eliminar el grupo', 'error');
+    }
 }
 
 function editUser(userId) {
@@ -797,11 +893,11 @@ function editUser(userId) {
 }
 
 function viewGroup(groupId) {
-    showAlert('Funcionalidad de vista de grupo en desarrollo', 'info');
+    showAlert('Funcionalidad de vista de grupo en desarrollo. ID: ' + groupId.substring(0, 8) + '...', 'info');
 }
 
 function editGroup(groupId) {
-    showAlert('Funcionalidad de edición de grupo en desarrollo', 'info');
+    showAlert('Funcionalidad de edición de grupo en desarrollo. ID: ' + groupId.substring(0, 8) + '...', 'info');
 }
 
 // Funciones auxiliares
@@ -853,6 +949,7 @@ function showAlert(message, type) {
 window.showAddUserModal = showAddUserModal;
 window.showCreateGroupModal = showCreateGroupModal;
 window.addNewUser = addNewUser;
+window.createNewGroup = createNewGroup;
 window.deactivateUser = deactivateUser;
 window.deleteGroup = deleteGroup;
 window.closeModal = closeModal;

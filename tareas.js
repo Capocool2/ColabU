@@ -1,6 +1,10 @@
 // Verificar autenticación al inicio de cada archivo JS principal
 import { supabase } from './supabaseClient.js';
 
+// Variable para almacenar la suscripción de Realtime
+let tasksSubscription = null;
+let groupsSubscriptionForTasks = null;
+
 document.addEventListener('DOMContentLoaded', function() {
     // Verificar que el usuario esté logueado
     if (!localStorage.getItem('currentUser')) {
@@ -12,6 +16,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Tu código existente aquí...
     initializeTasks();
 });
+
 function initializeTasks() {
     // Verificar autenticación
     if (!localStorage.getItem('currentUser')) {
@@ -28,7 +33,80 @@ function initializeTasks() {
     
     // Configurar event listeners
     setupTaskListeners();
+    
+    // Configurar suscripciones en tiempo real
+    setupRealtimeSubscriptions();
 }
+
+// Configurar suscripciones en tiempo real para tareas y grupos
+function setupRealtimeSubscriptions() {
+    const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+    if (!currentUser) return;
+
+    // Cancelar suscripciones anteriores si existen
+    if (tasksSubscription) {
+        supabase.removeChannel(tasksSubscription);
+    }
+    if (groupsSubscriptionForTasks) {
+        supabase.removeChannel(groupsSubscriptionForTasks);
+    }
+
+    // Suscribirse a cambios en la tabla tareas
+    tasksSubscription = supabase
+        .channel('tareas-changes')
+        .on(
+            'postgres_changes',
+            {
+                event: '*', // INSERT, UPDATE, DELETE
+                schema: 'public',
+                table: 'tareas'
+            },
+            (payload) => {
+                console.log('Cambio en tareas detectado:', payload);
+                // Recargar tareas cuando haya cambios
+                loadUserTasks();
+            }
+        )
+        .subscribe((status) => {
+            console.log('Estado de suscripción tareas:', status);
+            if (status === 'SUBSCRIBED') {
+                console.log('✅ Suscripción a tareas activa');
+            }
+        });
+
+    // Suscribirse a cambios en grupos (porque afectan qué tareas se muestran)
+    groupsSubscriptionForTasks = supabase
+        .channel('grupos-for-tasks-changes')
+        .on(
+            'postgres_changes',
+            {
+                event: '*',
+                schema: 'public',
+                table: 'grupos'
+            },
+            (payload) => {
+                console.log('Cambio en grupos (para tareas) detectado:', payload);
+                // Recargar tareas cuando cambien los grupos
+                loadUserTasks();
+            }
+        )
+        .subscribe((status) => {
+            console.log('Estado de suscripción grupos (tareas):', status);
+            if (status === 'SUBSCRIBED') {
+                console.log('✅ Suscripción a grupos (tareas) activa');
+            }
+        });
+}
+
+// Limpiar suscripciones al salir de la página
+window.addEventListener('beforeunload', () => {
+    if (tasksSubscription) {
+        supabase.removeChannel(tasksSubscription);
+    }
+    if (groupsSubscriptionForTasks) {
+        supabase.removeChannel(groupsSubscriptionForTasks);
+    }
+});
 
 function initDemoTasks() {
     if (!localStorage.getItem('colabu_tasks')) {

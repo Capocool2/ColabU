@@ -111,6 +111,8 @@
       </main>
     </div>
 
+    <!-- IMPORTANTE: primero el cliente de Supabase -->
+    <script type="module" src="supabaseClient.js"></script>
     <script>
       document.addEventListener("DOMContentLoaded", () => {
         const hamburger = document.querySelector(".hamburger");
@@ -124,6 +126,6 @@
         }
       });
     </script>
-    <script src="resumen.js"></script>
+    <script type="module" src="resumen.js"></script>
   </body>
 </html>

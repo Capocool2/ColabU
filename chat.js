@@ -1,9 +1,11 @@
-// Sistema de Chat - ColabU
-document.addEventListener('DOMContentLoaded', function() {
-    initializeChat();
-});
+// Sistema de Chat - ColabU con Supabase
+import { supabase } from './supabaseClient.js';
 
-function initializeChat() {
+let currentGroupId = null;
+let messageSubscription = null;
+let groupsSubscriptionForChat = null;
+
+document.addEventListener('DOMContentLoaded', function() {
     // Verificar autenticación
     if (!localStorage.getItem('currentUser')) {
         alert('Por favor inicia sesión primero');
@@ -11,15 +13,22 @@ function initializeChat() {
         return;
     }
 
+    initializeChat();
+});
+
+async function initializeChat() {
     // Obtener grupo de URL si existe
     const urlParams = new URLSearchParams(window.location.search);
     const groupId = urlParams.get('group');
     
     // Cargar conversaciones (grupos del usuario)
-    loadConversations();
+    await loadConversations();
     
     // Configurar event listeners
     setupChatListeners();
+    
+    // Configurar suscripción en tiempo real para grupos
+    setupGroupsRealtimeSubscription();
     
     // Cargar mensajes del grupo activo o del primer grupo
     if (groupId) {
@@ -28,23 +37,130 @@ function initializeChat() {
             chatItem.click();
         }
     } else {
-        loadActiveConversation();
+        await loadActiveConversation();
     }
 
-    // Simular usuarios en línea
-    updateOnlineStatus();
+    // Actualizar información del usuario
+    updateUserInfo();
 }
 
-function loadConversations() {
+// Configurar suscripción en tiempo real para grupos (actualizar lista de conversaciones)
+function setupGroupsRealtimeSubscription() {
     const currentUser = JSON.parse(localStorage.getItem('currentUser'));
     if (!currentUser) return;
 
-    const groups = JSON.parse(localStorage.getItem('colabu_groups') || '[]');
-    const userGroups = groups.filter(group => 
-        group.members.some(member => member.user_id === currentUser.id)
-    );
+    // Cancelar suscripción anterior si existe
+    if (groupsSubscriptionForChat) {
+        supabase.removeChannel(groupsSubscriptionForChat);
+    }
 
-    displayConversations(userGroups);
+    // Suscribirse a cambios en la tabla grupos
+    groupsSubscriptionForChat = supabase
+        .channel('grupos-for-chat-changes')
+        .on(
+            'postgres_changes',
+            {
+                event: '*', // INSERT, UPDATE, DELETE
+                schema: 'public',
+                table: 'grupos'
+            },
+            (payload) => {
+                console.log('Cambio en grupos (chat) detectado:', payload);
+                // Recargar conversaciones cuando haya cambios
+                loadConversations();
+            }
+        )
+        .subscribe((status) => {
+            console.log('Estado de suscripción grupos (chat):', status);
+            if (status === 'SUBSCRIBED') {
+                console.log('✅ Suscripción a grupos (chat) activa');
+            }
+        });
+}
+
+// Limpiar suscripciones al salir de la página
+window.addEventListener('beforeunload', () => {
+    if (messageSubscription) {
+        supabase.removeChannel(messageSubscription);
+    }
+    if (groupsSubscriptionForChat) {
+        supabase.removeChannel(groupsSubscriptionForChat);
+    }
+});
+
+async function loadConversations() {
+    const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+    if (!currentUser) return;
+
+    try {
+        const currentUserId = currentUser.id;
+
+        // Obtener grupos desde Supabase
+        const { data: allGroups, error: groupsError } = await supabase
+            .from('grupos')
+            .select('identificacion, nombre, nombre_del_proyecto, miembros, creado_por')
+            .order('creado_en', { ascending: false });
+
+        if (groupsError) {
+            console.error('Error cargando grupos:', groupsError);
+            return;
+        }
+
+        // Filtrar grupos donde el usuario es miembro o creador
+        const userGroups = (allGroups || []).filter(group => {
+            if (group.creado_por === currentUserId) return true;
+            if (group.miembros && Array.isArray(group.miembros)) {
+                return group.miembros.some(member => {
+                    if (typeof member === 'object' && member.user_id) {
+                        return member.user_id === currentUserId;
+                    }
+                    return member === currentUserId;
+                });
+            }
+            return false;
+        });
+
+        // Obtener último mensaje de cada grupo
+        const groupsWithLastMessage = await Promise.all(
+            userGroups.map(async (group) => {
+                const lastMessage = await getLastMessage(group.identificacion);
+                return { ...group, lastMessage };
+            })
+        );
+
+        displayConversations(groupsWithLastMessage);
+    } catch (error) {
+        console.error('Error en loadConversations:', error);
+    }
+}
+
+async function getLastMessage(groupId) {
+    try {
+        const { data, error } = await supabase
+            .from('mensajes')
+            .select('mensaje, creado_en, usuario_id')
+            .eq('grupo_id', groupId)
+            .order('creado_en', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (error || !data) return null;
+
+        // Obtener nombre del usuario
+        const { data: user } = await supabase
+            .from('usuarios')
+            .select('nombre')
+            .eq('id', data.usuario_id)
+            .single();
+
+        return {
+            text: data.mensaje,
+            timestamp: data.creado_en,
+            sender: user?.nombre || 'Usuario'
+        };
+    } catch (error) {
+        return null;
+    }
 }
 
 function displayConversations(groups) {
@@ -68,51 +184,32 @@ function displayConversations(groups) {
         chatList.appendChild(conversationElement);
     });
 
-    // Activar el primer grupo por defecto
-    const firstChat = chatList.querySelector('.chat-item');
-    if (firstChat) {
-        firstChat.classList.add('active');
-        loadConversationMessages(parseInt(firstChat.getAttribute('data-group')));
+    // Activar el primer grupo por defecto si no hay uno activo
+    const activeChat = chatList.querySelector('.chat-item.active');
+    if (!activeChat && groups.length > 0) {
+        const firstChat = chatList.querySelector('.chat-item');
+        if (firstChat) {
+            firstChat.classList.add('active');
+            loadConversationMessages(firstChat.getAttribute('data-group'));
+        }
     }
 }
 
 function createConversationElement(group) {
-    const lastMessage = getLastMessage(group.id);
-    const unreadCount = getUnreadCount(group.id);
-    const isOnline = checkGroupOnlineStatus(group);
-
+    const lastMessage = group.lastMessage;
     const chatItem = document.createElement('div');
-    chatItem.className = `chat-item ${isOnline ? 'online' : ''}`;
-    chatItem.setAttribute('data-group', group.id);
+    chatItem.className = 'chat-item';
+    chatItem.setAttribute('data-group', group.identificacion);
     chatItem.innerHTML = `
-        <div class="chat-avatar">${getInitials(group.name)}</div>
+        <div class="chat-avatar">${getInitials(group.nombre)}</div>
         <div class="chat-info">
-            <h4>${group.name}</h4>
-            <p>${lastMessage ? lastMessage.text : 'No hay mensajes aún'}</p>
+            <h4>${escapeHtml(group.nombre)}</h4>
+            <p>${lastMessage ? escapeHtml(lastMessage.sender + ': ' + lastMessage.text) : 'No hay mensajes aún'}</p>
             <span>${lastMessage ? formatTime(lastMessage.timestamp) : ''}</span>
         </div>
-        ${unreadCount > 0 ? `<div class="unread-badge">${unreadCount}</div>` : ''}
-        ${isOnline ? '<div class="online-indicator"></div>' : ''}
     `;
 
     return chatItem;
-}
-
-function getLastMessage(groupId) {
-    const messages = JSON.parse(localStorage.getItem(`colabu_chat_${groupId}`) || '[]');
-    return messages.length > 0 ? messages[messages.length - 1] : null;
-}
-
-function getUnreadCount(groupId) {
-    // Simular mensajes no leídos (en un sistema real esto vendría de la base de datos)
-    return Math.random() > 0.7 ? Math.floor(Math.random() * 5) + 1 : 0;
-}
-
-function checkGroupOnlineStatus(group) {
-    // Simular estado en línea basado en actividad reciente
-    const currentUser = JSON.parse(localStorage.getItem('currentUser'));
-    const otherMembers = group.members.filter(member => member.user_id !== currentUser.id);
-    return otherMembers.length > 0 && Math.random() > 0.3;
 }
 
 function setupChatListeners() {
@@ -130,7 +227,7 @@ function setupChatListeners() {
                 chatItem.classList.add('active');
                 // Cargar mensajes de esta conversación
                 const groupId = chatItem.getAttribute('data-group');
-                loadConversationMessages(parseInt(groupId));
+                loadConversationMessages(groupId);
             }
         });
     }
@@ -152,7 +249,7 @@ function setupChatListeners() {
     }
 
     // Botón de menú (tres puntos)
-    const menuBtn = document.querySelector('.conversation-actions .action-btn:last-child');
+    const menuBtn = document.querySelector('.conversation-actions .action-btn');
     if (menuBtn) {
         menuBtn.addEventListener('click', function() {
             showGroupMenu();
@@ -160,89 +257,154 @@ function setupChatListeners() {
     }
 }
 
-function loadActiveConversation() {
+async function loadActiveConversation() {
     const activeChat = document.querySelector('.chat-item.active');
     if (activeChat) {
-        const groupId = parseInt(activeChat.getAttribute('data-group'));
-        loadConversationMessages(groupId);
+        const groupId = activeChat.getAttribute('data-group');
+        await loadConversationMessages(groupId);
     }
 }
 
-function loadConversationMessages(groupId) {
-    const groups = JSON.parse(localStorage.getItem('colabu_groups') || '[]');
-    const group = groups.find(g => g.id === groupId);
-    
-    if (!group) return;
+async function loadConversationMessages(groupId) {
+    if (!groupId) return;
 
-    // Actualizar header de la conversación
-    updateConversationHeader(group);
+    currentGroupId = groupId;
 
-    // Cargar mensajes del grupo
-    const messages = JSON.parse(localStorage.getItem(`colabu_chat_${groupId}`) || '[]');
-    
-    // Si no hay mensajes, mostrar mensajes de ejemplo
-    if (messages.length === 0) {
-        const demoMessages = generateDemoMessages(group);
-        displayMessages(demoMessages);
-        localStorage.setItem(`colabu_chat_${groupId}`, JSON.stringify(demoMessages));
-    } else {
-        displayMessages(messages);
-    }
-}
+    try {
+        // Obtener información del grupo desde Supabase
+        const { data: group, error: groupError } = await supabase
+            .from('grupos')
+            .select('identificacion, nombre, nombre_del_proyecto, miembros, creado_por')
+            .eq('identificacion', groupId)
+            .single();
 
-function generateDemoMessages(group) {
-    const currentUser = JSON.parse(localStorage.getItem('currentUser'));
-    const otherMembers = group.members.filter(member => member.user_id !== currentUser.id);
-    
-    if (otherMembers.length === 0) return [];
-
-    const demoMember = otherMembers[0];
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    return [
-        {
-            id: 1,
-            type: 'received',
-            sender: demoMember.name,
-            sender_id: demoMember.user_id,
-            avatar: demoMember.avatar,
-            text: 'Hola! Empecemos a coordinar el trabajo del proyecto ' + group.project_name,
-            timestamp: yesterday.toISOString()
-        },
-        {
-            id: 2,
-            type: 'sent',
-            sender: 'Tú',
-            sender_id: currentUser.id,
-            avatar: getInitials(currentUser.full_name),
-            text: 'Perfecto! Ya tengo algunos avances que quiero compartir',
-            timestamp: today.toISOString()
-        },
-        {
-            id: 3,
-            type: 'received',
-            sender: demoMember.name,
-            sender_id: demoMember.user_id,
-            avatar: demoMember.avatar,
-            text: 'Genial! Puedes subir los archivos al grupo cuando estén listos',
-            timestamp: today.toISOString()
+        if (groupError || !group) {
+            console.error('Error cargando grupo:', groupError);
+            return;
         }
-    ];
+
+        // Actualizar header de la conversación
+        await updateConversationHeader(group);
+
+        // Cargar mensajes del grupo desde Supabase
+        const { data: messages, error: messagesError } = await supabase
+            .from('mensajes')
+            .select('id, mensaje, creado_en, usuario_id')
+            .eq('grupo_id', groupId)
+            .order('creado_en', { ascending: true });
+
+        if (messagesError) {
+            console.error('Error cargando mensajes:', messagesError);
+            return;
+        }
+
+        // Obtener información de usuarios para los mensajes
+        const userIds = [...new Set(messages.map(m => m.usuario_id))];
+        let usersMap = {};
+        
+        if (userIds.length > 0) {
+            const { data: users } = await supabase
+                .from('usuarios')
+                .select('id, nombre')
+                .in('id', userIds);
+
+            if (users) {
+                usersMap = users.reduce((acc, user) => {
+                    acc[user.id] = user;
+                    return acc;
+                }, {});
+            }
+        }
+
+        // Formatear mensajes
+        const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+        const formattedMessages = messages.map(msg => {
+            const user = usersMap[msg.usuario_id];
+            const isSent = msg.usuario_id === currentUser.id;
+            
+            return {
+                id: msg.id,
+                type: isSent ? 'sent' : 'received',
+                sender: isSent ? 'Tú' : (user?.nombre || 'Usuario'),
+                sender_id: msg.usuario_id,
+                avatar: getInitials(user?.nombre || 'Usuario'),
+                text: msg.mensaje,
+                timestamp: msg.creado_en
+            };
+        });
+
+        displayMessages(formattedMessages);
+
+        // Suscribirse a nuevos mensajes
+        subscribeToMessages(groupId);
+    } catch (error) {
+        console.error('Error en loadConversationMessages:', error);
+    }
 }
 
-function updateConversationHeader(group) {
+function subscribeToMessages(groupId) {
+    // Cancelar suscripción anterior si existe
+    if (messageSubscription) {
+        supabase.removeChannel(messageSubscription);
+    }
+
+    // Suscribirse a nuevos mensajes
+    messageSubscription = supabase
+        .channel(`messages:${groupId}`)
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'mensajes',
+            filter: `grupo_id=eq.${groupId}`
+        }, async (payload) => {
+            const newMessage = payload.new;
+            const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+            
+            // Obtener información del usuario
+            const { data: user } = await supabase
+                .from('usuarios')
+                .select('id, nombre')
+                .eq('id', newMessage.usuario_id)
+                .single();
+
+            const isSent = newMessage.usuario_id === currentUser.id;
+            
+            const formattedMessage = {
+                id: newMessage.id,
+                type: isSent ? 'sent' : 'received',
+                sender: isSent ? 'Tú' : (user?.nombre || 'Usuario'),
+                sender_id: newMessage.usuario_id,
+                avatar: getInitials(user?.nombre || 'Usuario'),
+                text: newMessage.mensaje,
+                timestamp: newMessage.creado_en
+            };
+
+            // Solo agregar si estamos viendo esta conversación
+            if (currentGroupId === groupId) {
+                const messageEl = createMessageElement(formattedMessage);
+                const container = document.querySelector('.messages-container');
+                container.appendChild(messageEl);
+                container.scrollTop = container.scrollHeight;
+            }
+
+            // Actualizar última conversación en la lista
+            updateLastMessage(groupId, formattedMessage.text, formattedMessage.sender);
+        })
+        .subscribe();
+}
+
+async function updateConversationHeader(group) {
     const conversationHeader = document.querySelector('.conversation-info');
     if (!conversationHeader) return;
 
-    const onlineCount = Math.min(group.members.length - 1, Math.floor(Math.random() * 3) + 1);
+    const memberCount = (group.miembros || []).length;
+    const onlineCount = Math.min(memberCount, Math.floor(Math.random() * 3) + 1);
 
     conversationHeader.innerHTML = `
-        <div class="group-avatar">${getInitials(group.name)}</div>
+        <div class="group-avatar">${getInitials(group.nombre)}</div>
         <div>
-            <h3>${group.name}</h3>
-            <p>${onlineCount} miembros en línea</p>
+            <h3>${escapeHtml(group.nombre)}</h3>
+            <p>${memberCount} miembros</p>
         </div>
     `;
 }
@@ -295,27 +457,27 @@ function createMessageElement(message) {
     
     if (message.type === 'received') {
         messageDiv.innerHTML = `
-            <div class="message-avatar">${message.avatar}</div>
+            <div class="message-avatar">${escapeHtml(message.avatar)}</div>
             <div class="message-content">
-                <div class="message-sender">${message.sender}</div>
-                <div class="message-text">${message.text}</div>
+                <div class="message-sender">${escapeHtml(message.sender)}</div>
+                <div class="message-text">${escapeHtml(message.text)}</div>
                 <div class="message-time">${formatTime(message.timestamp)}</div>
             </div>
         `;
     } else {
         messageDiv.innerHTML = `
             <div class="message-content">
-                <div class="message-text">${message.text}</div>
+                <div class="message-text">${escapeHtml(message.text)}</div>
                 <div class="message-time">${formatTime(message.timestamp)}</div>
             </div>
-            <div class="message-avatar">${message.avatar}</div>
+            <div class="message-avatar">${escapeHtml(message.avatar)}</div>
         `;
     }
     
     return messageDiv;
 }
 
-function sendMessage() {
+async function sendMessage() {
     const input = document.querySelector('.message-text-input');
     const text = input.value.trim();
     
@@ -324,242 +486,188 @@ function sendMessage() {
     const activeChat = document.querySelector('.chat-item.active');
     if (!activeChat) return;
 
-    const groupId = parseInt(activeChat.getAttribute('data-group'));
+    const groupId = activeChat.getAttribute('data-group');
     const currentUser = JSON.parse(localStorage.getItem('currentUser'));
 
-    const newMessage = {
-        id: Date.now(),
-        type: 'sent',
-        sender: 'Tú',
-        sender_id: currentUser.id,
-        avatar: getInitials(currentUser.full_name),
-        text: text,
-        timestamp: new Date().toISOString()
-    };
-    
-    // Agregar mensaje al almacenamiento
-    const messages = JSON.parse(localStorage.getItem(`colabu_chat_${groupId}`) || '[]');
-    messages.push(newMessage);
-    localStorage.setItem(`colabu_chat_${groupId}`, JSON.stringify(messages));
-    
-    // Agregar mensaje a la UI
-    const messageEl = createMessageElement(newMessage);
-    document.querySelector('.messages-container').appendChild(messageEl);
-    
-    // Limpiar input
-    input.value = '';
-    
-    // Scroll al final
-    const container = document.querySelector('.messages-container');
-    container.scrollTop = container.scrollHeight;
+    if (!groupId || !currentUser) return;
 
-    // Simular respuesta automática después de 1-3 segundos
-    setTimeout(() => {
-        simulateResponse(groupId);
-    }, 1000 + Math.random() * 2000);
-}
+    try {
+        // Guardar mensaje en Supabase
+        const { data, error } = await supabase
+            .from('mensajes')
+            .insert([{
+                grupo_id: groupId,
+                usuario_id: currentUser.id,
+                mensaje: text,
+                leido: false
+            }])
+            .select()
+            .single();
 
-function simulateResponse(groupId) {
-    const groups = JSON.parse(localStorage.getItem('colabu_groups') || '[]');
-    const group = groups.find(g => g.id === groupId);
-    const currentUser = JSON.parse(localStorage.getItem('currentUser'));
-    
-    if (!group) return;
+        if (error) {
+            console.error('Error enviando mensaje:', error);
+            alert('Error al enviar el mensaje');
+            return;
+        }
 
-    const otherMembers = group.members.filter(member => member.user_id !== currentUser.id);
-    if (otherMembers.length === 0) return;
-
-    const randomMember = otherMembers[Math.floor(Math.random() * otherMembers.length)];
-    const responses = [
-        'De acuerdo, lo revisaré',
-        'Perfecto, continuemos con el siguiente punto',
-        'Tengo una pregunta sobre eso',
-        'Puedes enviarme más detalles?',
-        'Excelente trabajo!',
-        'Necesitamos coordinar una reunión para esto',
-        'Tengo algunos comentarios al respecto',
-        'Avancemos con el siguiente objetivo'
-    ];
-
-    const responseMessage = {
-        id: Date.now(),
-        type: 'received',
-        sender: randomMember.name,
-        sender_id: randomMember.user_id,
-        avatar: randomMember.avatar,
-        text: responses[Math.floor(Math.random() * responses.length)],
-        timestamp: new Date().toISOString()
-    };
-
-    // Agregar respuesta al almacenamiento
-    const messages = JSON.parse(localStorage.getItem(`colabu_chat_${groupId}`) || '[]');
-    messages.push(responseMessage);
-    localStorage.setItem(`colabu_chat_${groupId}`, JSON.stringify(messages));
-    
-    // Solo agregar a la UI si esta conversación está activa
-    const activeChat = document.querySelector('.chat-item.active');
-    if (activeChat && parseInt(activeChat.getAttribute('data-group')) === groupId) {
-        const messageEl = createMessageElement(responseMessage);
-        document.querySelector('.messages-container').appendChild(messageEl);
+        // Limpiar input
+        input.value = '';
         
-        // Scroll al final
+        // El mensaje se agregará automáticamente a través de la suscripción
+        // Pero también podemos agregarlo manualmente para feedback inmediato
+        const newMessage = {
+            id: data.id,
+            type: 'sent',
+            sender: 'Tú',
+            sender_id: currentUser.id,
+            avatar: getInitials(currentUser.full_name || currentUser.nombre || 'Usuario'),
+            text: text,
+            timestamp: data.creado_en
+        };
+
+        const messageEl = createMessageElement(newMessage);
         const container = document.querySelector('.messages-container');
+        container.appendChild(messageEl);
         container.scrollTop = container.scrollHeight;
 
         // Actualizar última conversación en la lista
-        updateLastMessage(groupId, responseMessage.text);
+        updateLastMessage(groupId, text, 'Tú');
+    } catch (error) {
+        console.error('Error en sendMessage:', error);
+        alert('Error al enviar el mensaje');
     }
 }
 
-function updateLastMessage(groupId, lastMessage) {
+async function updateLastMessage(groupId, lastMessageText, sender) {
     const chatItem = document.querySelector(`.chat-item[data-group="${groupId}"]`);
     if (chatItem) {
         const chatInfo = chatItem.querySelector('.chat-info p');
         const chatTime = chatItem.querySelector('.chat-info span');
         
-        if (chatInfo) chatInfo.textContent = lastMessage;
+        if (chatInfo) {
+            const displayText = sender === 'Tú' ? lastMessageText : `${sender}: ${lastMessageText}`;
+            chatInfo.textContent = displayText.length > 50 ? displayText.substring(0, 50) + '...' : displayText;
+        }
         if (chatTime) chatTime.textContent = 'Ahora';
     }
 }
 
-function showGroupMenu() {
+async function showGroupMenu() {
     const activeChat = document.querySelector('.chat-item.active');
     if (!activeChat) return;
 
-    const groupId = parseInt(activeChat.getAttribute('data-group'));
-    const groups = JSON.parse(localStorage.getItem('colabu_groups') || '[]');
-    const group = groups.find(g => g.id === groupId);
-    
-    if (!group) return;
+    const groupId = activeChat.getAttribute('data-group');
 
-    const modalHTML = `
-        <div class="modal-overlay active">
-            <div class="modal-container">
-                <div class="modal-header">
-                    <h2>Información del Grupo</h2>
-                    <button class="modal-close">&times;</button>
-                </div>
-                <div class="modal-content">
-                    <div class="group-info-section">
-                        <div class="group-header-modal">
-                            <div class="group-avatar-large">${getInitials(group.name)}</div>
-                            <div class="group-details">
-                                <h3>${group.name}</h3>
-                                <p class="project-name">${group.project_name}</p>
-                                <p class="member-count">${group.members.length} miembros</p>
+    try {
+        // Obtener información del grupo desde Supabase
+        const { data: group, error } = await supabase
+            .from('grupos')
+            .select('identificacion, nombre, nombre_del_proyecto, descripcion, miembros, creado_por')
+            .eq('identificacion', groupId)
+            .single();
+
+        if (error || !group) {
+            console.error('Error cargando grupo:', error);
+            return;
+        }
+
+        // Obtener información de usuarios para los miembros
+        const memberIds = (group.miembros || []).map(m => typeof m === 'object' ? m.user_id : m).filter(Boolean);
+        let memberDetails = [];
+        
+        if (memberIds.length > 0) {
+            const { data: users } = await supabase
+                .from('usuarios')
+                .select('id, nombre, correo, rol')
+                .in('id', memberIds);
+            
+            memberDetails = users || [];
+        }
+
+        const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+
+        const modalHTML = `
+            <div class="modal-overlay active">
+                <div class="modal-container">
+                    <div class="modal-header">
+                        <h2>Información del Grupo</h2>
+                        <button class="modal-close">&times;</button>
+                    </div>
+                    <div class="modal-content">
+                        <div class="group-info-section">
+                            <div class="group-header-modal">
+                                <div class="group-avatar-large">${getInitials(group.nombre)}</div>
+                                <div class="group-details">
+                                    <h3>${escapeHtml(group.nombre)}</h3>
+                                    <p class="project-name">${escapeHtml(group.nombre_del_proyecto || 'Sin proyecto')}</p>
+                                    <p class="member-count">${(group.miembros || []).length} miembros</p>
+                                </div>
+                            </div>
+                            
+                            <div class="description-section">
+                                <h4>Descripción del Proyecto</h4>
+                                <p>${escapeHtml(group.descripcion || 'No hay descripción disponible')}</p>
                             </div>
                         </div>
-                        
-                        <div class="description-section">
-                            <h4>Descripción del Proyecto</h4>
-                            <p>${group.description || 'No hay descripción disponible'}</p>
-                        </div>
-                    </div>
 
-                    <div class="members-section">
-                        <h4>Miembros del Grupo</h4>
-                        <div class="members-list-modal">
-                            ${group.members.map(member => {
-                                const isOnline = checkMemberOnlineStatus(member.user_id);
-                                const isCurrentUser = member.user_id === JSON.parse(localStorage.getItem('currentUser')).id;
-                                return `
-                                    <div class="member-item ${isOnline ? 'online' : ''} ${isCurrentUser ? 'current-user' : ''}">
-                                        <div class="member-avatar">${member.avatar}</div>
-                                        <div class="member-info">
-                                            <div class="member-name">
-                                                ${member.name}
-                                                ${isCurrentUser ? ' (Tú)' : ''}
+                        <div class="members-section">
+                            <h4>Miembros del Grupo</h4>
+                            <div class="members-list-modal">
+                                ${(group.miembros || []).map(member => {
+                                    const memberId = typeof member === 'object' ? member.user_id : member;
+                                    const userInfo = memberDetails.find(u => u.id === memberId);
+                                    const memberName = typeof member === 'object' ? member.name : (userInfo?.nombre || 'Usuario');
+                                    const memberRole = typeof member === 'object' ? member.role : 'Sin rol';
+                                    const isCurrentUser = memberId === currentUser.id;
+                                    const isOnline = Math.random() > 0.5; // Simulado
+                                    
+                                    return `
+                                        <div class="member-item ${isOnline ? 'online' : ''} ${isCurrentUser ? 'current-user' : ''}">
+                                            <div class="member-avatar">${getInitials(memberName)}</div>
+                                            <div class="member-info">
+                                                <div class="member-name">
+                                                    ${escapeHtml(memberName)}
+                                                    ${isCurrentUser ? ' (Tú)' : ''}
+                                                </div>
+                                                <div class="member-role">${escapeHtml(memberRole)}</div>
                                             </div>
-                                            <div class="member-role">${member.role}</div>
+                                            <div class="member-status">
+                                                <div class="status-indicator ${isOnline ? 'online' : 'offline'}"></div>
+                                                <span class="status-text">${isOnline ? 'En línea' : 'Desconectado'}</span>
+                                            </div>
                                         </div>
-                                        <div class="member-status">
-                                            <div class="status-indicator ${isOnline ? 'online' : 'offline'}"></div>
-                                            <span class="status-text">${isOnline ? 'En línea' : 'Desconectado'}</span>
-                                        </div>
-                                    </div>
-                                `;
-                            }).join('')}
+                                    `;
+                                }).join('')}
+                            </div>
                         </div>
                     </div>
-
-                    <div class="files-section">
-                        <h4>Archivos del Proyecto</h4>
-                        <div class="files-list">
-                            ${getGroupFiles(groupId).map(file => `
-                                <div class="file-item">
-                                    <div class="file-icon">${getFileIcon(file.name)}</div>
-                                    <div class="file-info">
-                                        <div class="file-name">${file.name}</div>
-                                        <div class="file-details">${file.size} • ${file.date}</div>
-                                    </div>
-                                </div>
-                            `).join('')}
-                            ${getGroupFiles(groupId).length === 0 ? 
-                                '<p class="no-files">No hay archivos compartidos aún</p>' : ''}
-                        </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-primary" onclick="closeModal()">Cerrar</button>
                     </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-primary" onclick="closeModal()">Cerrar</button>
                 </div>
             </div>
-        </div>
-    `;
+        `;
 
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
-    setupModalEvents();
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        setupModalEvents();
+    } catch (error) {
+        console.error('Error en showGroupMenu:', error);
+    }
 }
 
-function getGroupFiles(groupId) {
-    // Simular archivos del grupo
-    const fileTypes = ['pdf', 'docx', 'xlsx', 'jpg', 'png', 'zip'];
-    const fileNames = [
-        'Documentación del proyecto',
-        'Presentación final',
-        'Análisis de requerimientos',
-        'Diseño de interfaz',
-        'Plan de trabajo',
-        'Presupuesto detallado'
-    ];
-
-    return Array.from({length: 3}, (_, i) => ({
-        name: `${fileNames[i]}.${fileTypes[i]}`,
-        size: `${Math.floor(Math.random() * 5) + 1} MB`,
-        date: 'Hoy'
-    }));
-}
-
-function getFileIcon(filename) {
-    const ext = filename.split('.').pop().toLowerCase();
-    const icons = {
-        'pdf': '📄',
-        'doc': '📝',
-        'docx': '📝',
-        'xlsx': '📊',
-        'jpg': '🖼️',
-        'jpeg': '🖼️',
-        'png': '🖼️',
-        'zip': '📦'
-    };
-    return icons[ext] || '📎';
-}
-
-function checkMemberOnlineStatus(userId) {
-    // Simular estado en línea (50% de probabilidad)
-    // En un sistema real, esto verificaría la última actividad del usuario
-    return Math.random() > 0.5;
-}
-
-function updateOnlineStatus() {
-    // Simular actualización de estado en línea cada 30 segundos
-    setInterval(() => {
-        const chatItems = document.querySelectorAll('.chat-item');
-        chatItems.forEach(item => {
-            if (Math.random() > 0.7) {
-                item.classList.toggle('online');
-            }
-        });
-    }, 30000);
+function updateUserInfo() {
+    const user = JSON.parse(localStorage.getItem('currentUser'));
+    if (user) {
+        const userNameEl = document.getElementById('userName');
+        const userAvatarEl = document.getElementById('userAvatar');
+        
+        if (userNameEl) {
+            userNameEl.textContent = user.full_name || user.nombre || 'Usuario';
+        }
+        if (userAvatarEl) {
+            userAvatarEl.textContent = getInitials(user.full_name || user.nombre || 'Usuario');
+        }
+    }
 }
 
 function setupModalEvents() {
@@ -595,6 +703,7 @@ function closeModal() {
 
 // Funciones auxiliares
 function getInitials(name) {
+    if (!name) return '??';
     return name
         .split(' ')
         .map(word => word[0])
@@ -604,6 +713,7 @@ function getInitials(name) {
 }
 
 function formatTime(timestamp) {
+    if (!timestamp) return '';
     const date = new Date(timestamp);
     const now = new Date();
     const diff = now - date;
@@ -641,10 +751,17 @@ function formatMessageDate(dateString) {
     }
 }
 
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 // Hacer funciones globales
 window.closeModal = closeModal;
 
-// Agregar CSS para los nuevos elementos
+// CSS adicional
 const chatStyles = `
     .modal-overlay {
         position: fixed;
@@ -901,92 +1018,6 @@ const chatStyles = `
         white-space: nowrap;
     }
 
-    .files-section h4 {
-        margin: 0 0 15px 0;
-        color: #495057;
-        font-size: 1.1rem;
-    }
-
-    .files-list {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-    }
-
-    .file-item {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 12px;
-        border: 1px solid #e9ecef;
-        border-radius: 8px;
-        transition: all 0.3s ease;
-    }
-
-    .file-item:hover {
-        background: #f8f9fa;
-    }
-
-    .file-icon {
-        font-size: 1.2rem;
-        flex-shrink: 0;
-    }
-
-    .file-info {
-        flex: 1;
-    }
-
-    .file-name {
-        font-weight: 500;
-        color: #495057;
-        margin-bottom: 2px;
-    }
-
-    .file-details {
-        font-size: 0.8rem;
-        color: #6c757d;
-    }
-
-    .no-files {
-        text-align: center;
-        color: #6c757d;
-        font-style: italic;
-        padding: 20px;
-    }
-
-    .chat-item {
-        position: relative;
-    }
-
-    .online-indicator {
-        position: absolute;
-        top: 12px;
-        left: 12px;
-        width: 8px;
-        height: 8px;
-        background: #28a745;
-        border-radius: 50%;
-        border: 2px solid white;
-    }
-
-    .chat-item.online .chat-avatar {
-        border: 2px solid #28a745;
-    }
-
-    .unread-badge {
-        position: absolute;
-        top: 12px;
-        right: 15px;
-        background: #e74c3c;
-        color: white;
-        border-radius: 10px;
-        padding: 2px 6px;
-        font-size: 0.7rem;
-        font-weight: 600;
-        min-width: 18px;
-        text-align: center;
-    }
-
     .no-conversations {
         text-align: center;
         padding: 40px 20px;
@@ -1030,25 +1061,13 @@ if (!document.querySelector('#chat-styles')) {
     document.head.appendChild(styleElement);
 }
 
-// Actualizar el HTML del chat para quitar elementos no necesarios
-document.addEventListener('DOMContentLoaded', function() {
-    // Quitar botón "Nuevo" del header del chat
-    const newChatBtn = document.querySelector('.new-chat-btn');
-    if (newChatBtn) {
-        newChatBtn.remove();
-    }
-
-    // Quitar panel de información del grupo
-    const infoPanel = document.querySelector('.chat-info-panel');
-    if (infoPanel) {
-        infoPanel.remove();
-    }
-
-    // Actualizar layout del chat
-    const chatLayout = document.querySelector('.chat-layout');
-    if (chatLayout) {
-        chatLayout.style.gridTemplateColumns = '350px 1fr';
+// Limpiar suscripción al salir
+window.addEventListener('beforeunload', () => {
+    if (messageSubscription) {
+        supabase.removeChannel(messageSubscription);
     }
 });
+
+console.log('Chat.js cargado correctamente con Supabase');
 
 console.log('Chat.js cargado correctamente');

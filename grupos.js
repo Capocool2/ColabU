@@ -1,9 +1,7 @@
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+import { supabase } from './supabaseClient.js';
 
-const SUPABASE_URL = 'https://sapmwupwlwjrpnrkklaz.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNhcG13dXB3bHdqcnBucmtrbGF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk1MjMzNzMsImV4cCI6MjA3NTA5OTM3M30.puy88odroAEvikkyozavFGWRWybPLzpUIl6ZDhutkRM';
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+// Variable para almacenar la suscripción de Realtime
+let groupsSubscription = null;
 
 document.addEventListener('DOMContentLoaded', function() {
     if (!localStorage.getItem('currentUser')) {
@@ -16,8 +14,50 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function initializeGroups() {
     loadUserGroups();
+    setupRealtimeSubscription();
     console.log('Grupos listo!');
 }
+
+// Configurar suscripción en tiempo real para grupos
+function setupRealtimeSubscription() {
+    const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+    if (!currentUser) return;
+
+    // Cancelar suscripción anterior si existe
+    if (groupsSubscription) {
+        supabase.removeChannel(groupsSubscription);
+    }
+
+    // Suscribirse a cambios en la tabla grupos
+    groupsSubscription = supabase
+        .channel('grupos-changes')
+        .on(
+            'postgres_changes',
+            {
+                event: '*', // INSERT, UPDATE, DELETE
+                schema: 'public',
+                table: 'grupos'
+            },
+            (payload) => {
+                console.log('Cambio en grupos detectado:', payload);
+                // Recargar grupos cuando haya cambios
+                loadUserGroups();
+            }
+        )
+        .subscribe((status) => {
+            console.log('Estado de suscripción grupos:', status);
+            if (status === 'SUBSCRIBED') {
+                console.log('✅ Suscripción a grupos activa');
+            }
+        });
+}
+
+// Limpiar suscripción al salir de la página
+window.addEventListener('beforeunload', () => {
+    if (groupsSubscription) {
+        supabase.removeChannel(groupsSubscription);
+    }
+});
 
 async function getGroups() {
     const { data, error } = await supabase
@@ -43,15 +83,26 @@ async function getUsers() {
 
 async function loadUserGroups() {
     const currentUser = JSON.parse(localStorage.getItem('currentUser'));
-    if (!currentUser) return;
+    if (!currentUser) {
+        console.error('No hay usuario en sesión');
+        return;
+    }
 
-    const allGroups = await getGroups();
-    const userGroups = allGroups.filter(group =>
-        (group.miembros || []).some(member => member.user_id === currentUser.id)
-    );
+    try {
+        const allGroups = await getGroups();
+        // Incluir grupos donde el usuario es miembro O es el creador
+        const userGroups = allGroups.filter(group => {
+            const isMember = (group.miembros || []).some(member => member.user_id === currentUser.id);
+            const isCreator = group.creado_por === currentUser.id;
+            return isMember || isCreator;
+        });
 
-    console.log('Grupos del usuario:', userGroups);
-    displayGroups(userGroups);
+        console.log('Grupos del usuario:', userGroups);
+        displayGroups(userGroups);
+    } catch (error) {
+        console.error('Error al cargar grupos:', error);
+        showAlert('Error al cargar los grupos. Por favor recarga la página.', 'error');
+    }
 }
 
 function displayGroups(groups) {
@@ -83,16 +134,16 @@ function displayGroups(groups) {
 }
 
 function createGroupElement(group) {
-    const miembros = (group.miembros || []).map(m => `<span class="member-avatar-small">${getInitials(m.name)}</span>`).join('');
+    const miembros = (group.miembros || []).map(m => `<span class="member-avatar-small" title="${m.name || 'Miembro'}">${getInitials(m.name || 'M')}</span>`).join('');
     return Object.assign(document.createElement('div'), {
         className: 'group-card',
         innerHTML: `
             <h3>${group.nombre}</h3>
             <p><b>Proyecto:</b> ${group.nombre_del_proyecto}</p>
-            <p><b>Descripción:</b> <span style="color:#555">${group.descripcion || ''}</span></p>
-            <p><b>Fecha límite:</b> <span style="color:#555">${formatDate(group.fecha_limite) || ''}</span></p>
-            <div class="members-preview">${miembros}</div>
-            <button class="btn btn-secondary" onclick="showGroupDetails(${group.identificación})">Ver detalles</button>
+            <p><b>Descripción:</b> <span style="color:#555">${group.descripcion || 'Sin descripción'}</span></p>
+            <p><b>Fecha límite:</b> <span style="color:#555">${formatDate(group.fecha_limite)}</span></p>
+            <div class="members-preview">${miembros || '<span style="color:#999">Sin miembros</span>'}</div>
+            <button class="btn btn-secondary" onclick="showGroupDetails('${group.identificacion}')">Ver detalles</button>
         `
     });
 }
@@ -106,14 +157,22 @@ function createCreateGroupCard() {
     return div;
 }
 
-window.showCreateGroupModal = showCreateGroupModal; // Para que funcione el onclick
-
 async function showCreateGroupModal() {
     const currentUser = JSON.parse(localStorage.getItem('currentUser'));
-    if (!currentUser) return;
+    if (!currentUser) {
+        showAlert('Por favor inicia sesión primero', 'error');
+        return;
+    }
 
-    const users = await getUsers();
-    const availableUsers = users.filter(user => user.identificacion !== currentUser.id);
+    try {
+        const users = await getUsers();
+        // Filtrar usuarios disponibles (excluir el usuario actual)
+        const availableUsers = users.filter(user => user.id !== currentUser.id);
+        
+        if (users.length === 0) {
+            showAlert('No hay usuarios disponibles en el sistema', 'info');
+            return;
+        }
 
     const modalHTML = `
         <div class="group-modal">
@@ -147,21 +206,21 @@ async function showCreateGroupModal() {
                                     <small>Selecciona los miembros y asigna sus roles en el proyecto</small>
                                 </div>
                                 <div class="members-selection">
-                                    ${availableUsers.map(user => `
+                                    ${availableUsers.length > 0 ? availableUsers.map(user => `
                                         <div class="user-selection-item">
                                             <div class="user-selection-header">
                                                 <label class="user-checkbox">
-                                                    <input type="checkbox" name="members" value="${user.identificacion}">
+                                                    <input type="checkbox" name="members" value="${user.id}">
                                                     <span class="checkmark"></span>
                                                     <div class="user-info">
-                                                        <span class="user-name">${user.nombre}</span>
-                                                        <span class="user-type">${user.role === 'teacher' ? 'Docente' : 'Estudiante'}</span>
+                                                        <span class="user-name">${user.nombre || user.correo}</span>
+                                                        <span class="user-type">${user.rol === 'docente' ? 'Docente' : user.rol === 'admin' ? 'Administrador' : 'Estudiante'}</span>
                                                     </div>
                                                 </label>
                                             </div>
                                             <div class="role-selection">
                                                 <label>Rol en el proyecto:</label>
-                                                <select class="member-role-select" data-user-id="${user.identificacion}">
+                                                <select class="member-role-select" data-user-id="${user.id}">
                                                     <option value="">Seleccionar rol...</option>
                                                     <option value="Lider de proyecto">Lider de proyecto</option>
                                                     <option value="Desarrollador Frontend">Desarrollador Frontend</option>
@@ -179,7 +238,7 @@ async function showCreateGroupModal() {
                                                 </select>
                                             </div>
                                         </div>
-                                    `).join('')}
+                                    `).join('') : '<p style="text-align:center;color:#999;padding:1rem;">No hay otros usuarios disponibles para agregar</p>'}
                                 </div>
                             </div>
                         </div>
@@ -193,7 +252,11 @@ async function showCreateGroupModal() {
         </div>
     `;
 
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    } catch (error) {
+        console.error('Error al mostrar modal de creación:', error);
+        showAlert('Error al cargar el formulario. Por favor intenta de nuevo.', 'error');
+    }
 }
 
 window.closeGroupModal = function() {
@@ -223,56 +286,67 @@ window.createNewGroup = async function() {
     checkboxes.forEach(checkbox => {
         const userId = checkbox.value;
         const roleSelect = document.querySelector(`.member-role-select[data-user-id="${userId}"]`);
-        const role = roleSelect ? roleSelect.value : '';
+        const role = roleSelect ? roleSelect.value.trim() : '';
         
         if (!role) {
             hasErrors = true;
-            roleSelect.style.borderColor = '#e74c3c';
-            alert('Por favor asigna un rol a todos los miembros seleccionados');
+            if (roleSelect) {
+                roleSelect.style.borderColor = '#e74c3c';
+                roleSelect.style.boxShadow = '0 0 0 2px rgba(231, 76, 60, 0.2)';
+            }
             return;
         }
 
+        const userNameElement = roleSelect.closest('.user-selection-item')?.querySelector('.user-name');
+        const userName = userNameElement ? userNameElement.textContent : 'Usuario';
+
         selectedMembers.push({
             user_id: userId,
-            name: roleSelect.closest('.user-selection-item').querySelector('.user-name').textContent,
+            name: userName,
             role: role,
-            avatar: getInitials(roleSelect.closest('.user-selection-item').querySelector('.user-name').textContent)
+            avatar: getInitials(userName)
         });
     });
-
-    if (hasErrors) return;
-
-    // Crear nuevo grupo en Supabase
-    const newGroup = {
-  nombre: groupName,
-  nombre_del_proyecto: projectName,
-  descripcion: description || 'Sin descripción',
-  fecha_limite: deadline,
-  creado_por: currentUser.id,
-  creado_en: new Date().toISOString(),
-  progreso: 0,
-  miembros: [
-    {
-      user_id: currentUser.id,
-      name: currentUser.full_name || currentUser.nombre,
-      role: 'Líder de proyecto',
-      avatar: getInitials(currentUser.full_name || currentUser.nombre)
-    },
-    ...selectedMembers
-  ]
-};
-
-
-    const { error } = await supabase
-        .from('grupos')
-        .insert([newGroup]);
-
-    if (error) {
-        alert('Error al crear el grupo');
+    
+    if (hasErrors) {
+        alert('Por favor asigna un rol a todos los miembros seleccionados');
         return;
     }
 
-    alert('Grupo "' + groupName + '" creado exitosamente');
+    // Crear nuevo grupo en Supabase
+    const newGroup = {
+        nombre: groupName,
+        nombre_del_proyecto: projectName,
+        descripcion: description || null,
+        fecha_limite: deadline || null,
+        creado_por: currentUser.id,
+        progreso: 0,
+        miembros: [
+            {
+                user_id: currentUser.id,
+                name: currentUser.full_name || currentUser.nombre || 'Usuario',
+                role: 'Líder de proyecto',
+                avatar: getInitials(currentUser.full_name || currentUser.nombre || 'U')
+            },
+            ...selectedMembers
+        ]
+    };
+
+    console.log('Creando grupo:', newGroup);
+
+    const { data, error } = await supabase
+        .from('grupos')
+        .insert([newGroup])
+        .select();
+
+    if (error) {
+        console.error('Error al crear el grupo:', error);
+        alert('Error al crear el grupo: ' + error.message);
+        return;
+    }
+
+    console.log('Grupo creado exitosamente:', data);
+    showAlert('Grupo "' + groupName + '" creado exitosamente', 'success');
     closeGroupModal();
     loadUserGroups();
 };
@@ -305,17 +379,18 @@ function formatDateTime(dateString) {
 // Cambia getUserName, getUserType, getUserEmail para que sean asíncronas y usen perfiles
 async function getUserName(userId) {
     const users = await getUsers();
-    const user = users.find(u => u.identificacion === userId);
+    const user = users.find(u => u.id === userId);
     return user ? user.nombre : 'Usuario desconocido';
 }
 async function getUserType(userId) {
     const users = await getUsers();
-    const user = users.find(u => u.identificacion === userId);
-    return user ? (user.role === 'teacher' ? 'Docente' : 'Estudiante') : 'Tipo desconocido';
+    const user = users.find(u => u.id === userId);
+    return user ? (user.rol === 'docente' ? 'Docente' : user.rol === 'admin' ? 'Administrador' : 'Estudiante') : 'Tipo desconocido';
 }
 async function getUserEmail(userId) {
-    // Si tienes email en perfiles, puedes devolverlo aquí
-    return '';
+    const users = await getUsers();
+    const user = users.find(u => u.id === userId);
+    return user ? user.correo : '';
 }
 
 function getInitials(name) {
@@ -378,7 +453,82 @@ window.editGroup = function(groupId) {
     showAlert('Editar grupo - Funcionalidad completa en desarrollo', 'info');
 };
 
+window.showGroupDetails = async function(groupId) {
+    const allGroups = await getGroups();
+    const group = allGroups.find(g => g.identificacion === groupId);
+    
+    if (!group) {
+        showAlert('Grupo no encontrado', 'error');
+        return;
+    }
 
+    const miembros = group.miembros || [];
+    const miembrosHTML = miembros.map(m => `
+        <div class="detailed-member">
+            <div class="member-avatar-large">${m.avatar || getInitials(m.name || 'M')}</div>
+            <div class="member-details">
+                <span class="member-name">${m.name || 'Miembro'}</span>
+                <span class="member-role">${m.role || 'Sin rol asignado'}</span>
+            </div>
+        </div>
+    `).join('') || '<p style="text-align:center;color:#999;">No hay miembros en este grupo</p>';
+
+    const modalHTML = `
+        <div class="group-modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>${group.nombre}</h3>
+                    <button class="close-modal" onclick="closeGroupModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="group-detail-section">
+                        <h4>Información del Proyecto</h4>
+                        <div class="detail-grid">
+                            <div class="detail-item">
+                                <div class="detail-label">Nombre del Proyecto</div>
+                                <div class="detail-value">${group.nombre_del_proyecto}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Descripción</div>
+                                <div class="detail-value">${group.descripcion || 'Sin descripción'}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Fecha Límite</div>
+                                <div class="detail-value">${formatDate(group.fecha_limite)}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Progreso</div>
+                                <div class="detail-value">
+                                    <div class="progress-bar-small">
+                                        <div class="progress-fill" style="width: ${group.progreso || 0}%"></div>
+                                    </div>
+                                    ${group.progreso || 0}%
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="group-detail-section">
+                        <h4>Miembros del Equipo (${miembros.length})</h4>
+                        <div class="members-detailed-list">
+                            ${miembrosHTML}
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeGroupModal()">Cerrar</button>
+                    <button type="button" class="btn btn-primary" onclick="openGroupChat('${groupId}')">Abrir Chat</button>
+                    <button type="button" class="btn btn-outline" onclick="viewGroupTasks('${groupId}')">Ver Tareas</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+};
+
+// Exponer funciones globalmente para onclick
+window.showCreateGroupModal = showCreateGroupModal;
+window.showGroupDetails = showGroupDetails;
 
 // Agregar CSS dinámico
 const groupsStyles = `
@@ -967,6 +1117,5 @@ if (!document.querySelector('#groups-styles')) {
 }
 
 console.log('Grupos.js cargado correctamente');
-
     // Tu código existente aquí...
     initializeGroups();

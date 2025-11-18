@@ -96,7 +96,9 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 </script>
-    <script src="calendario.js"></script>
+    <!-- IMPORTANTE: primero el cliente de Supabase -->
+    <script type="module" src="supabaseClient.js"></script>
+    <script type="module" src="calendario.js"></script>
 
     <script>
         // Funciones básicas para la página
